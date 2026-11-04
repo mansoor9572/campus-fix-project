@@ -333,6 +333,8 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
   const [note, setNote] = useState("")
   const [noteError, setNoteError] = useState("")
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
+  const [aiReviewStatus, setAiReviewStatus] = useState<string | null>(report?.aiAnalysis?.reviewStatus || null)
+  const [reviewingAi, setReviewingAi] = useState(false)
 
   if (!report) {
     return <EmptyState title="Report not found" description="The request may have been removed or its ID may be incorrect." action={<Button variant="outline" onClick={() => router.push("/admin/reports")}>Back to all reports</Button>} />
@@ -395,6 +397,41 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
   const suggestedDepartment = DEPARTMENT_BY_CATEGORY[report.category]
   const confidence = report.images.length ? 94 : 86
 
+  const handleAiReview = async (action: "approved" | "rejected") => {
+    setReviewingAi(true)
+    try {
+      const res = await fetch(`/api/reports/${report.id}/ai-analysis`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      if (!res.ok) throw new Error("Failed to update AI review.")
+      setAiReviewStatus(action)
+      toast.success(action === "approved" ? "AI suggestions approved." : "AI suggestions dismissed.")
+    } catch {
+      toast.error("Unable to update AI review status.")
+    } finally {
+      setReviewingAi(false)
+    }
+  }
+
+  const applyAiSuggestions = () => {
+    if (!report.aiAnalysis) return
+    const ai = report.aiAnalysis
+    const prioMap: Record<string, Priority> = { low: "Low", medium: "Medium", high: "High" }
+    const mappedPriority = prioMap[ai.suggestedPriority] || report.priority
+    changeReport(
+      report.id,
+      {
+        category: (ai.suggestedCategory as ReportCategory) || report.category,
+        priority: mappedPriority,
+        department: (ai.recommendedDepartment as MaintenanceDepartment) || report.department,
+      },
+      profiles.admin.name
+    )
+    toast.success("Applied AI category, priority, and department recommendations.")
+  }
+
   return (
     <>
       <PageHeader eyebrow="Campus operations" title="Review report" description={`Manage assignment, priority, and progress for ${report.id}.`} actions={<Link className="button-link button-link-secondary" href="/admin/reports">Back to all reports</Link>} />
@@ -422,25 +459,95 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
               </div>
             </CardContent>
           </Card>
-          <PortalCard title="Demo AI analysis" description="Illustrative suggestions only. A human reviewer makes every final decision." className="ai-review-card">
+          <PortalCard
+            title={report.aiAnalysis ? `AI Triage & Classification` : `Demo AI analysis`}
+            description={
+              report.aiAnalysis
+                ? `Powered by ${report.aiAnalysis.aiProvider} (${report.aiAnalysis.modelName})`
+                : `Illustrative suggestions only. A human reviewer makes every final decision.`
+            }
+            className="ai-review-card"
+          >
             <div className="ai-review-topline">
-              <span className="ai-review-label"><Sparkles aria-hidden="true" />Sample analysis</span>
-              <span className="human-review-label"><ShieldCheck aria-hidden="true" />Human review required</span>
+              <span className="ai-review-label">
+                <Sparkles aria-hidden="true" />
+                {report.aiAnalysis ? `${report.aiAnalysis.aiProvider}` : "Sample analysis"}
+              </span>
+              <span className="human-review-label">
+                <ShieldCheck aria-hidden="true" />
+                {aiReviewStatus === "approved"
+                  ? "Approved by Admin"
+                  : aiReviewStatus === "rejected"
+                    ? "Dismissed"
+                    : "Human review required"}
+              </span>
             </div>
             <div className="ai-review-suggestions">
-              <div><span>Suggested category</span><strong>{report.category}</strong></div>
-              <div><span>Suggested priority</span><PriorityBadge priority={report.priority} /></div>
-              <div><span>Recommended department</span><strong>{suggestedDepartment}</strong></div>
+              <div>
+                <span>Suggested category</span>
+                <strong>{report.aiAnalysis?.suggestedCategory || report.category}</strong>
+              </div>
+              <div>
+                <span>Suggested priority</span>
+                <PriorityBadge
+                  priority={
+                    report.aiAnalysis
+                      ? (({ low: "Low", medium: "Medium", high: "High" }[report.aiAnalysis.suggestedPriority] || "Medium") as Priority)
+                      : report.priority
+                  }
+                />
+              </div>
+              <div>
+                <span>Recommended department</span>
+                <strong>{report.aiAnalysis?.recommendedDepartment || suggestedDepartment}</strong>
+              </div>
             </div>
+            {report.aiAnalysis?.detectedObject ? (
+              <div style={{ marginTop: "12px", fontSize: "0.875rem" }}>
+                <span className="report-detail-label">Detected Physical Fixture</span>
+                <p style={{ fontWeight: 600, color: "#1f2937", marginTop: "2px" }}>{report.aiAnalysis.detectedObject}</p>
+              </div>
+            ) : null}
             <div className="ai-review-summary">
-              <span>Sample generated description</span>
-              <p>{report.description}</p>
+              <span>{report.aiAnalysis ? "Generated Problem Summary" : "Sample generated description"}</span>
+              <p>{report.aiAnalysis?.problemSummary || report.aiAnalysis?.generatedDescription || report.description}</p>
             </div>
             <div className="ai-confidence">
-              <div><span>Sample confidence</span><strong>{confidence}%</strong></div>
-              <div className="ai-confidence-track" role="progressbar" aria-label="Sample AI confidence" aria-valuemin={0} aria-valuemax={100} aria-valuenow={confidence}><span style={{ width: `${confidence}%` }} /></div>
+              <div>
+                <span>Confidence score</span>
+                <strong>{Math.round((report.aiAnalysis?.confidence ?? confidence / 100) * 100)}%</strong>
+              </div>
+              <div
+                className="ai-confidence-track"
+                role="progressbar"
+                aria-label="AI confidence"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round((report.aiAnalysis?.confidence ?? confidence / 100) * 100)}
+              >
+                <span style={{ width: `${Math.round((report.aiAnalysis?.confidence ?? confidence / 100) * 100)}%` }} />
+              </div>
             </div>
-            <p className="ai-review-disclaimer"><Info aria-hidden="true" />This is demonstration content, not a real AI analysis.</p>
+            {report.aiAnalysis ? (
+              <div style={{ display: "flex", gap: "8px", marginTop: "16px", flexWrap: "wrap", alignItems: "center" }}>
+                <Button type="button" size="sm" variant="outline" onClick={applyAiSuggestions}>
+                  <Sparkles data-icon="inline-start" aria-hidden="true" />
+                  Apply suggestions
+                </Button>
+                {aiReviewStatus !== "approved" ? (
+                  <Button type="button" size="sm" variant="secondary" onClick={() => handleAiReview("approved")} disabled={reviewingAi}>
+                    Approve triage
+                  </Button>
+                ) : null}
+                {aiReviewStatus !== "rejected" ? (
+                  <Button type="button" size="sm" variant="ghost" onClick={() => handleAiReview("rejected")} disabled={reviewingAi}>
+                    Dismiss
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <p className="ai-review-disclaimer"><Info aria-hidden="true" />This is demonstration content, not a real AI analysis.</p>
+            )}
           </PortalCard>
           <PortalCard title="Activity timeline" description="Status changes and team notes." className="timeline-card">
             <ReportTimeline updates={report.updates} />

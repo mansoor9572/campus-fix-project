@@ -11,8 +11,11 @@ import {
   facilityCategories,
   users,
   reportImages,
+  aiAnalyses,
   type UserRole,
 } from "@/lib/db"
+import { triageFacilityIssue } from "@/lib/ai/gemini"
+import { saveAiAnalysis, getAiAnalysis } from "@/lib/ai/service"
 import { canAccessReport, priorityLabels, statusLabels, transitions } from "./policy"
 import {
   createInput,
@@ -136,6 +139,19 @@ export async function createReport(
       categoryId: input.categoryId,
     }),
   })
+
+  // Automatic AI triage & analysis
+  try {
+    const triage = await triageFacilityIssue({
+      title: input.title,
+      description: input.description,
+      building: building.name,
+      room: input.room,
+    })
+    await saveAiAnalysis(newReport.id, triage)
+  } catch (err) {
+    console.error("Auto AI triage error:", err)
+  }
 
   return getReportById(actor, newReport.id)
 }
@@ -267,6 +283,60 @@ export async function listReports(
     }
   }
 
+  // Fetch AI analysis for each report
+  const reportDbIds = rows.map((r) => r.id)
+  const aiMap: Record<string, {
+    problemSummary: string
+    detectedObject: string
+    suggestedCategory: string
+    suggestedPriority: string
+    recommendedDepartment: string
+    generatedDescription: string
+    confidence: number
+    requiresHumanReview: boolean
+    reviewStatus: string
+    aiProvider: string
+    modelName: string
+  }> = {}
+
+  if (reportDbIds.length > 0) {
+    const aiRows = await db
+      .select({
+        reportId: aiAnalyses.reportId,
+        problemSummary: aiAnalyses.problemSummary,
+        detectedObject: aiAnalyses.detectedObject,
+        suggestedPriority: aiAnalyses.suggestedPriority,
+        generatedDescription: aiAnalyses.generatedDescription,
+        confidence: aiAnalyses.confidence,
+        requiresHumanReview: aiAnalyses.requiresHumanReview,
+        reviewStatus: aiAnalyses.reviewStatus,
+        aiProvider: aiAnalyses.aiProvider,
+        modelName: aiAnalyses.modelName,
+        suggestedCategoryName: facilityCategories.name,
+        recommendedDepartmentName: departments.name,
+      })
+      .from(aiAnalyses)
+      .leftJoin(facilityCategories, eq(aiAnalyses.suggestedCategoryId, facilityCategories.id))
+      .leftJoin(departments, eq(aiAnalyses.recommendedDepartmentId, departments.id))
+      .where(inArray(aiAnalyses.reportId, reportDbIds))
+
+    for (const a of aiRows) {
+      aiMap[a.reportId] = {
+        problemSummary: a.problemSummary || "",
+        detectedObject: a.detectedObject || "",
+        suggestedCategory: a.suggestedCategoryName || "Other",
+        suggestedPriority: a.suggestedPriority || "medium",
+        recommendedDepartment: a.recommendedDepartmentName || "Facilities Services",
+        generatedDescription: a.generatedDescription || "",
+        confidence: a.confidence || 0.85,
+        requiresHumanReview: a.requiresHumanReview,
+        reviewStatus: a.reviewStatus,
+        aiProvider: a.aiProvider || "Google Gemini",
+        modelName: a.modelName || "gemini-2.5-flash",
+      }
+    }
+  }
+
   const items = rows.map((r) => ({
     id: r.referenceNumber, // UI uses referenceNumber as id (e.g., RPT-1048)
     dbId: r.id,
@@ -287,6 +357,7 @@ export async function listReports(
     resolvedAt: r.resolvedAt?.toISOString() ?? null,
     closedAt: r.closedAt?.toISOString() ?? null,
     images: [],
+    aiAnalysis: aiMap[r.id] ?? null,
   }))
 
   return {
@@ -425,6 +496,8 @@ export async function getReportById(
     message: h.note || `Status updated to ${statusLabels[h.newStatus]}.`,
   }))
 
+  const aiRecord = await getAiAnalysis(row.id)
+
   return {
     id: row.referenceNumber,
     dbId: row.id,
@@ -453,6 +526,20 @@ export async function getReportById(
     images: images.map((img) => img.fileUrl || img.storageKey),
     updates,
     assignments,
+    aiAnalysis: aiRecord ? {
+      id: aiRecord.id,
+      problemSummary: aiRecord.problemSummary,
+      detectedObject: aiRecord.detectedObject,
+      suggestedCategory: aiRecord.suggestedCategory,
+      suggestedPriority: aiRecord.suggestedPriority,
+      recommendedDepartment: aiRecord.recommendedDepartment,
+      generatedDescription: aiRecord.generatedDescription,
+      confidence: aiRecord.confidence,
+      requiresHumanReview: aiRecord.requiresHumanReview,
+      reviewStatus: aiRecord.reviewStatus,
+      aiProvider: aiRecord.aiProvider,
+      modelName: aiRecord.modelName,
+    } : null,
   }
 }
 

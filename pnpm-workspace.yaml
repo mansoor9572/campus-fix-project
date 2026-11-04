@@ -5,5 +5,7 @@ minimumReleaseAgeExclude:
   - next
 
 allowBuilds:
+  '@google/genai': true
   esbuild: true
+  protobufjs: true
   unrs-resolver: false

@@ -32,6 +32,20 @@ export type CampusReport = {
   updates: ReportUpdate[]
   version?: string
   dbId?: string
+  aiAnalysis?: {
+    id?: string
+    problemSummary: string
+    detectedObject: string
+    suggestedCategory: string
+    suggestedPriority: string
+    recommendedDepartment: string
+    generatedDescription: string
+    confidence: number
+    requiresHumanReview: boolean
+    reviewStatus: string
+    aiProvider: string
+    modelName: string
+  } | null
 }
 
 export type DemoProfile = {
