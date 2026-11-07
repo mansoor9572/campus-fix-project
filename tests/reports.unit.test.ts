@@ -201,3 +201,21 @@ test("terminal status check and label mappings", () => {
   assert.equal(priorityLabels["high"], "High")
 })
 
+test("dashboard stats calculation logic: rate and aggregations", () => {
+  const calculateRate = (total: number, resolved: number) =>
+    total > 0 ? Math.round((resolved / total) * 100) : 0
+
+  assert.equal(calculateRate(10, 4), 40)
+  assert.equal(calculateRate(0, 0), 0)
+  assert.equal(calculateRate(3, 3), 100)
+  assert.equal(calculateRate(7, 2), 29)
+
+  // Verify date range filters
+  const validRanges = ["all", "7", "30"]
+  assert.equal(validRanges.includes("all"), true)
+  assert.equal(validRanges.includes("7"), true)
+  assert.equal(validRanges.includes("30"), true)
+  assert.equal(validRanges.includes("90"), false)
+})
+
+

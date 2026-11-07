@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react"
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -97,27 +97,52 @@ function readImagePreview(file: File) {
 }
 
 export function AdminDashboard() {
-  const { reports, profiles } = useDemoData()
+  const { reports, profiles, stats, fetchStats } = useDemoData()
   const [dateRange, setDateRange] = useState<"all" | "7" | "30">("all")
   const [loadedAt] = useState(() => Date.now())
+
+  useEffect(() => {
+    void fetchStats(dateRange)
+  }, [dateRange, fetchStats])
+
   const cutoff = dateRange === "all" ? null : loadedAt - Number(dateRange) * 24 * 60 * 60 * 1000
   const periodReports = cutoff === null ? reports : reports.filter((report) => new Date(report.createdAt).getTime() >= cutoff)
   const openReports = periodReports.filter((report) => report.status !== "Resolved" && report.status !== "Rejected")
-  const pendingCount = periodReports.filter((report) => report.status === "Submitted" || report.status === "Under Review").length
-  const highPriorityCount = openReports.filter((report) => report.priority === "Urgent" || report.priority === "High").length
-  const inProgressCount = periodReports.filter((report) => report.status === "In Progress").length
-  const resolvedCount = periodReports.filter((report) => report.status === "Resolved").length
-  const categories = CATEGORY_OPTIONS.map((category) => ({ category, count: periodReports.filter((report) => report.category === category).length }))
-    .filter((item) => item.count > 0)
-    .sort((a, b) => b.count - a.count)
-  const buildings = BUILDING_OPTIONS.map((building) => ({ building, count: periodReports.filter((report) => report.building === building).length }))
-    .filter((item) => item.count > 0)
-    .sort((a, b) => b.count - a.count)
+  
+  // Use live server statistics when available, otherwise fall back to client-filtered reports
+  const totalReportsCount = stats ? stats.total : periodReports.length
+  const pendingCount = stats ? stats.pending : periodReports.filter((report) => report.status === "Submitted" || report.status === "Under Review").length
+  const highPriorityCount = stats ? stats.urgent : openReports.filter((report) => report.priority === "Urgent" || report.priority === "High").length
+  const inProgressCount = stats ? stats.inProgress : periodReports.filter((report) => report.status === "In Progress").length
+  const resolvedCount = stats ? stats.resolved : periodReports.filter((report) => report.status === "Resolved").length
+
+  const categories = stats?.byCategory?.length
+    ? stats.byCategory
+    : CATEGORY_OPTIONS.map((category) => ({ category, count: periodReports.filter((report) => report.category === category).length }))
+        .filter((item) => item.count > 0)
+        .sort((a, b) => b.count - a.count)
+
+  const buildings = stats?.byBuilding?.length
+    ? stats.byBuilding
+    : BUILDING_OPTIONS.map((building) => ({ building, count: periodReports.filter((report) => report.building === building).length }))
+        .filter((item) => item.count > 0)
+        .sort((a, b) => b.count - a.count)
+
   const maxCategory = Math.max(1, ...categories.map((item) => item.count))
   const maxBuilding = Math.max(1, ...buildings.map((item) => item.count))
   const attentionQueue = queueOrder(openReports).slice(0, 5)
   const recentSubmissions = [...periodReports].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5)
   const assignedOpenReports = openReports.filter((report) => report.assignedTo === profiles.staff.name)
+
+  const teamWorkload = stats?.workload?.length
+    ? stats.workload
+    : [
+        {
+          name: profiles.staff.name,
+          openCount: assignedOpenReports.length,
+        },
+      ]
+  const maxWorkload = Math.max(1, ...teamWorkload.map((m) => m.openCount))
 
   return (
     <>
@@ -139,17 +164,22 @@ export function AdminDashboard() {
       />
       <DemoBanner />
       <div className="stat-grid admin-stat-grid">
-        <StatCard label="Total reports" value={periodReports.length} note="in selected period" icon={ClipboardCheck} />
+        <StatCard label="Total reports" value={totalReportsCount} note="in selected period" icon={ClipboardCheck} />
         <StatCard label="Pending review" value={pendingCount} note="awaiting a decision" icon={Clock3} />
         <StatCard label="High priority" value={highPriorityCount} note="open urgent or high" icon={Siren} />
         <StatCard label="In progress" value={inProgressCount} note="assigned work" icon={Wrench} />
-        <StatCard label="Resolved" value={resolvedCount} note="in selected period" icon={CheckCircle2} />
+        <StatCard
+          label="Resolved"
+          value={resolvedCount}
+          note={stats?.avgResolutionHours ? `Avg ${stats.avgResolutionHours}h resolution` : "in selected period"}
+          icon={CheckCircle2}
+        />
       </div>
       <div className="portal-grid">
         <PortalCard title="Needs attention" description="Open requests ordered by priority." className="portal-col-8" action={<Link className="card-link" href="/admin/reports">View all reports <ArrowRight aria-hidden="true" /></Link>} contentClassName="flush-card-content">
           {attentionQueue.length ? <ReportTable reports={attentionQueue} hrefFor={(report) => `/admin/reports/${report.id}`} showReporter /> : <EmptyState title="Queue is clear" description="New reports will appear here when they need a review." />}
         </PortalCard>
-        <PortalCard title="Reports by category" description="A quick view of issue volume." className="portal-col-4" action={<span className="role-chip">{periodReports.length} total</span>}>
+        <PortalCard title="Reports by category" description="A quick view of issue volume." className="portal-col-4" action={<span className="role-chip">{totalReportsCount} total</span>}>
           <div className="distribution-list">
             {categories.map(({ category, count }) => (
               <div className="distribution-row" key={category}>
@@ -165,19 +195,23 @@ export function AdminDashboard() {
         <PortalCard title="Priority mix" description="Open reports by priority level." className="portal-col-5">
           <div className="priority-mix-list">
             {(["Urgent", "High", "Medium", "Low"] as Priority[]).map((priority) => {
-              const count = openReports.filter((report) => report.priority === priority).length
+              const count = stats?.byPriority
+                ? stats.byPriority.find((p) => p.priority.toLowerCase() === priority.toLowerCase())?.count ?? 0
+                : openReports.filter((report) => report.priority === priority).length
               return <div className="priority-mix-row" key={priority}><PriorityBadge priority={priority} /><span>{count} active</span></div>
             })}
           </div>
           <div className="priority-mix-summary"><ShieldCheck aria-hidden="true" /><span>Every request has a visible owner and priority.</span></div>
         </PortalCard>
-        <PortalCard title="Team workload" description="Assigned open work across the facilities team." className="portal-col-7" action={<span className="card-link">Demo team</span>}>
-          <div className="workload-row">
-            <RoleAvatar name={profiles.staff.name} role="staff" />
-            <div className="workload-person"><strong>{profiles.staff.name}</strong><span>Facilities technician</span></div>
-            <div className="workload-bar"><div style={{ width: `${Math.min(100, (assignedOpenReports.length / 5) * 100)}%` }} /></div>
-            <span className="workload-count">{assignedOpenReports.length} open</span>
-          </div>
+        <PortalCard title="Team workload" description="Assigned open work across the facilities team." className="portal-col-7" action={<span className="card-link">{stats?.workload?.length ? "Live operations" : "Demo team"}</span>}>
+          {teamWorkload.map((member) => (
+            <div className="workload-row" key={member.name}>
+              <RoleAvatar name={member.name} role="staff" />
+              <div className="workload-person"><strong>{member.name}</strong><span>Facilities technician</span></div>
+              <div className="workload-bar"><div style={{ width: `${Math.min(100, (member.openCount / maxWorkload) * 100)}%` }} /></div>
+              <span className="workload-count">{member.openCount} open</span>
+            </div>
+          ))}
           <div className="workload-note"><Info aria-hidden="true" /> Assign reports from the review queue to balance work across the team.</div>
         </PortalCard>
         <PortalCard title="Reports by building" description="Locations with the most requests." className="portal-col-4">
@@ -634,12 +668,14 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
 }
 
 export function StaffDashboard() {
-  const { reports, profiles, changeReport } = useDemoData()
+  const { reports, profiles, stats, changeReport } = useDemoData()
   const profile = profiles.staff
   const assigned = reports.filter((report) => report.assignedTo === profile.name)
   const active = queueOrder(assigned.filter((report) => report.status !== "Resolved" && report.status !== "Rejected"))
-  const urgent = active.filter((report) => report.priority === "Urgent" || report.priority === "High").length
-  const resolved = assigned.filter((report) => report.status === "Resolved").length
+  const urgent = stats ? stats.urgent : active.filter((report) => report.priority === "Urgent" || report.priority === "High").length
+  const inProgressCount = stats ? stats.inProgress : active.filter((report) => report.status === "In Progress").length
+  const resolved = stats ? stats.resolved : assigned.filter((report) => report.status === "Resolved").length
+  const activeCount = stats ? (stats.pending + stats.inProgress) : active.length
 
   const startWork = (report: CampusReport) => {
     changeReport(report.id, { status: "In Progress" }, profile.name)
@@ -656,9 +692,9 @@ export function StaffDashboard() {
       <PageHeader eyebrow="Facilities team" title={`Good morning, ${profile.name.split(" ")[0]}`} description="Your assigned work and priority requests for campus." actions={<span className="role-chip"><HardHat aria-hidden="true" />On shift · Facilities</span>} />
       <DemoBanner>Task changes sync with the admin queue and student report timeline in this session.</DemoBanner>
       <div className="stat-grid">
-        <StatCard label="Active tasks" value={active.length} note="assigned to you" icon={Wrench} />
+        <StatCard label="Active tasks" value={activeCount} note="assigned to you" icon={Wrench} />
         <StatCard label="High priority" value={urgent} note="needs timely action" icon={ShieldAlert} />
-        <StatCard label="In progress" value={active.filter((report) => report.status === "In Progress").length} note="currently underway" icon={Clock3} />
+        <StatCard label="In progress" value={inProgressCount} note="currently underway" icon={Clock3} />
         <StatCard label="Resolved" value={resolved} note="assigned requests" icon={CheckCircle2} />
       </div>
       <div className="portal-grid">

@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react"
 import { useSession } from "next-auth/react"
 import { uiRole } from "@/lib/auth/policy"
 import {
@@ -51,6 +51,20 @@ type ReferenceData = {
   staff: Array<{ id: string; name: string; email: string }>
 }
 
+export type DashboardStats = {
+  total: number
+  pending: number
+  inProgress: number
+  resolved: number
+  urgent: number
+  resolutionRate: number
+  avgResolutionHours: number | null
+  byCategory: Array<{ category: string; count: number }>
+  byBuilding: Array<{ building: string; count: number }>
+  byPriority: Array<{ priority: string; count: number }>
+  workload: Array<{ staffId: string; name: string; openCount: number }>
+}
+
 type DemoDataContextValue = {
   reports: CampusReport[]
   notifications: CampusNotification[]
@@ -58,7 +72,9 @@ type DemoDataContextValue = {
   activeRole: Role
   preferences: Preferences
   searchTerm: string
+  stats: DashboardStats | null
   setSearchTerm: (value: string) => void
+  fetchStats: (days?: string) => Promise<DashboardStats | null>
   addReport: (input: NewReportInput) => string
   changeReport: (id: string, patch: ReportPatch, actor?: string) => void
   addReportUpdate: (id: string, message: string, actor: string, title?: string) => void
@@ -102,12 +118,31 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
 
   const [nextReportNumber, setNextReportNumber] = useState(1049)
   const [searchTerm, setSearchTerm] = useState("")
+  const [stats, setStats] = useState<DashboardStats | null>(null)
   const [preferences, setPreferences] = useState<Preferences>({
     emailUpdates: true,
     inAppNotifications: true,
     weeklyDigest: false,
     compactTables: false,
   })
+
+  const fetchStats = useCallback(
+    async (days = "all"): Promise<DashboardStats | null> => {
+      if (status !== "authenticated" || !session?.user) return null
+      try {
+        const res = await fetch(`/api/reports/stats?days=${encodeURIComponent(days)}`)
+        if (res.ok) {
+          const data: DashboardStats = await res.json()
+          setStats(data)
+          return data
+        }
+      } catch (err) {
+        console.error("Failed to load dashboard stats:", err)
+      }
+      return null
+    },
+    [status, session?.user]
+  )
 
   // Load real data from server when authenticated
   useEffect(() => {
@@ -122,6 +157,14 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
         if (isMounted && data) setRefData(data)
       })
       .catch((err) => console.error("Failed to load reference data:", err))
+
+    // Fetch dashboard stats
+    fetch("/api/reports/stats?days=all")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data) setStats(data)
+      })
+      .catch((err) => console.error("Failed to load dashboard stats:", err))
 
     // Fetch reports
     fetch("/api/reports?pageSize=100")
@@ -276,6 +319,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
                   : r
               )
             )
+            void fetchStats()
           } catch (err) {
             const error = err instanceof Error ? err : new Error("Unknown error")
             console.error("Report submit error:", error)
@@ -394,6 +438,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
           setReports((current) =>
             current.map((r) => (r.id === id ? { ...r, ...serverReport } : r))
           )
+          void fetchStats()
         })
         .catch((err) => {
           console.error("Change report error:", err)
@@ -502,7 +547,9 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
         activeRole,
         preferences,
         searchTerm,
+        stats,
         setSearchTerm,
+        fetchStats,
         addReport,
         changeReport,
         addReportUpdate,

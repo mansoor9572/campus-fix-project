@@ -97,12 +97,13 @@ function ActivityFeed({ reports }: { reports: CampusReport[] }) {
 }
 
 export function StudentDashboard() {
-  const { reports, profiles } = useDemoData()
+  const { reports, profiles, stats } = useDemoData()
   const profile = profiles.student
   const myReports = sortNewest(getStudentReports(reports, profile.email))
-  const pendingCount = myReports.filter((report) => report.status === "Submitted" || report.status === "Under Review").length
-  const progressCount = myReports.filter((report) => report.status === "In Progress").length
-  const resolvedCount = myReports.filter((report) => report.status === "Resolved").length
+  const totalCount = stats ? stats.total : myReports.length
+  const pendingCount = stats ? stats.pending : myReports.filter((report) => report.status === "Submitted" || report.status === "Under Review").length
+  const progressCount = stats ? stats.inProgress : myReports.filter((report) => report.status === "In Progress").length
+  const resolvedCount = stats ? stats.resolved : myReports.filter((report) => report.status === "Resolved").length
 
   return (
     <>
@@ -114,7 +115,7 @@ export function StudentDashboard() {
       />
       <DemoBanner />
       <div className="stat-grid">
-        <StatCard label="Total reports" value={myReports.length} note="all time" icon={FilePlus2} />
+        <StatCard label="Total reports" value={totalCount} note="all time" icon={FilePlus2} />
         <StatCard label="Pending review" value={pendingCount} note="awaiting team review" icon={Clock3} />
         <StatCard label="In progress" value={progressCount} note="being worked on" icon={Wrench} />
         <StatCard label="Resolved" value={resolvedCount} note="issues taken care of" icon={CheckCircle2} />
@@ -139,8 +140,10 @@ export function StudentDashboard() {
         <PortalCard title="Priority distribution" description="How your reports are currently classified." className="portal-col-4">
           <div className="student-priority-list">
             {(["Urgent", "High", "Medium", "Low"] as Priority[]).map((priority) => {
-              const count = myReports.filter((report) => report.priority === priority).length
-              const percentage = myReports.length ? Math.round((count / myReports.length) * 100) : 0
+              const count = stats?.byPriority
+                ? stats.byPriority.find((p) => p.priority.toLowerCase() === priority.toLowerCase())?.count ?? 0
+                : myReports.filter((report) => report.priority === priority).length
+              const percentage = totalCount ? Math.round((count / totalCount) * 100) : 0
               return (
                 <div className="student-priority-row" key={priority}>
                   <div className="student-priority-label"><PriorityBadge priority={priority} /><span>{count}</span></div>

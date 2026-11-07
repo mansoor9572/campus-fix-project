@@ -907,6 +907,18 @@ export async function getDashboardStats(
     .from(reports)
     .where(whereClause)
 
+  // Average resolution hours for resolved reports
+  const [resolutionAvg] = await db
+    .select({
+      avgHours: sql<number | null>`ROUND(AVG(EXTRACT(EPOCH FROM (${reports.resolvedAt} - ${reports.createdAt})) / 3600)::numeric, 1)::float`,
+    })
+    .from(reports)
+    .where(
+      whereClause
+        ? and(whereClause, sql`${reports.resolvedAt} IS NOT NULL`)
+        : sql`${reports.resolvedAt} IS NOT NULL`
+    )
+
   // Distribution by category
   const categoryStats = await db
     .select({
@@ -944,37 +956,54 @@ export async function getDashboardStats(
   // Workload (for admin role)
   let workload: Array<{ name: string; staffId: string; openCount: number }> = []
   if (actor.role === "admin") {
+    // Fetch all active maintenance staff members
+    const allStaff = await db
+      .select({
+        staffId: users.id,
+        staffName: users.name,
+      })
+      .from(users)
+      .where(and(eq(users.role, "maintenance_staff"), eq(users.isActive, true)))
+
     const workloadRows = await db
       .select({
         staffId: reports.assignedStaffId,
-        staffName: users.name,
         openCount: sql<number>`count(*)::int`,
       })
       .from(reports)
-      .innerJoin(users, eq(reports.assignedStaffId, users.id))
       .where(
         and(
           sql`${reports.assignedStaffId} IS NOT NULL`,
           sql`${reports.status} NOT IN ('resolved', 'closed', 'rejected')`
         )
       )
-      .groupBy(reports.assignedStaffId, users.name)
+      .groupBy(reports.assignedStaffId)
 
-    workload = workloadRows
-      .filter((w) => Boolean(w.staffId))
-      .map((w) => ({
-        staffId: w.staffId!,
-        name: w.staffName ?? "Technician",
-        openCount: w.openCount,
-      }))
+    const staffCounts: Record<string, number> = {}
+    for (const row of workloadRows) {
+      if (row.staffId) staffCounts[row.staffId] = row.openCount
+    }
+
+    workload = allStaff.map((s) => ({
+      staffId: s.staffId,
+      name: s.staffName,
+      openCount: staffCounts[s.staffId] || 0,
+    }))
   }
 
+  const total = counts?.total ?? 0
+  const resolved = counts?.resolved ?? 0
+  const resolutionRate = total > 0 ? Math.round((resolved / total) * 100) : 0
+  const avgResolutionHours = resolutionAvg?.avgHours ?? null
+
   return {
-    total: counts?.total ?? 0,
+    total,
     pending: counts?.pending ?? 0,
     inProgress: counts?.inProgress ?? 0,
-    resolved: counts?.resolved ?? 0,
+    resolved,
     urgent: counts?.urgent ?? 0,
+    resolutionRate,
+    avgResolutionHours,
     byCategory: categoryStats.map((c) => ({ category: c.category, count: c.count })),
     byBuilding: buildingStats.map((b) => ({ building: b.building, count: b.count })),
     byPriority: priorityStats.map((p) => ({
