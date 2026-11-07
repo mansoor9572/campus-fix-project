@@ -32,10 +32,28 @@ function enumValue<T extends string>(value: unknown, options: Record<T, string>,
 }
 export function createInput(raw: unknown) {
   const input = object(raw)
-  keys(input, ["title", "description", "buildingId", "categoryId", "room", "priority"])
+  keys(input, ["title", "description", "buildingId", "categoryId", "room", "priority", "images"])
+  // Validate optional images array: each entry must have storageKey, fileUrl, originalFilename, mimeType, fileSize
+  let images: Array<{ storageKey: string; fileUrl: string; originalFilename: string; mimeType: string; fileSize: number }> = []
+  if (input.images !== undefined) {
+    if (!Array.isArray(input.images) || input.images.length > 10) throw new ReportError("Images must be an array of at most 10 items.")
+    images = (input.images as Array<Record<string, unknown>>).map((img, i) => {
+      if (!img || typeof img !== "object") throw new ReportError(`Image ${i + 1} is invalid.`)
+      if (typeof img.storageKey !== "string" || !img.storageKey) throw new ReportError(`Image ${i + 1} missing storageKey.`)
+      if (typeof img.fileUrl !== "string" || !img.fileUrl) throw new ReportError(`Image ${i + 1} missing fileUrl.`)
+      return {
+        storageKey: img.storageKey as string,
+        fileUrl: img.fileUrl as string,
+        originalFilename: (typeof img.originalFilename === "string" ? img.originalFilename : "photo.jpg"),
+        mimeType: (typeof img.mimeType === "string" ? img.mimeType : "image/jpeg"),
+        fileSize: (typeof img.fileSize === "number" ? img.fileSize : 0),
+      }
+    })
+  }
   return { title: textField(input.title, "Title", 8, 120), description: textField(input.description, "Description", 20, 4000),
     room: textField(input.room, "Location", 2, 120), buildingId: uuid(input.buildingId, "building"), categoryId: uuid(input.categoryId, "category"),
-    priority: input.priority === undefined ? "medium" as Priority : enumValue(input.priority, priorityLabels, "priority") }
+    priority: input.priority === undefined ? "medium" as Priority : enumValue(input.priority, priorityLabels, "priority"),
+    images }
 }
 export type ReportPatchInput = { version: string; status?: ReportStatus; priority?: Priority; title?: string; description?: string; room?: string; buildingId?: string; categoryId?: string; departmentId?: string | null; assignedStaffId?: string | null; note?: string }
 export function patchInput(raw: unknown): ReportPatchInput {

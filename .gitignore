@@ -19,3 +19,7 @@ node_modules
 .auth-outbox/
 test-results/
 playwright-report/
+
+# Uploaded images (keep directory structure, ignore actual uploads)
+public/uploads/*
+!public/uploads/.gitkeep

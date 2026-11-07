@@ -126,6 +126,21 @@ export async function createReport(
     type: "report_submitted",
   })
 
+  // Store uploaded images (linked from /api/uploads)
+  if (input.images && input.images.length > 0) {
+    for (const img of input.images) {
+      await db.insert(reportImages).values({
+        reportId: newReport.id,
+        storageKey: img.storageKey,
+        fileUrl: img.fileUrl,
+        originalFilename: img.originalFilename,
+        mimeType: img.mimeType,
+        fileSize: img.fileSize,
+        uploadedBy: actor.id,
+      })
+    }
+  }
+
   // Audit log entry
   await db.insert(auditLogs).values({
     actorId: actor.id,
@@ -137,6 +152,7 @@ export async function createReport(
       priority: input.priority,
       buildingId: input.buildingId,
       categoryId: input.categoryId,
+      imageCount: input.images?.length ?? 0,
     }),
   })
 
@@ -337,6 +353,26 @@ export async function listReports(
     }
   }
 
+  // Fetch images for each report
+  const imageMap: Record<string, string[]> = {}
+  if (reportDbIds.length > 0) {
+    const imageRows = await db
+      .select({
+        reportId: reportImages.reportId,
+        fileUrl: reportImages.fileUrl,
+        storageKey: reportImages.storageKey,
+      })
+      .from(reportImages)
+      .where(inArray(reportImages.reportId, reportDbIds))
+      .orderBy(reportImages.createdAt)
+
+    for (const img of imageRows) {
+      const url = img.fileUrl || img.storageKey
+      if (!imageMap[img.reportId]) imageMap[img.reportId] = []
+      imageMap[img.reportId].push(url)
+    }
+  }
+
   const items = rows.map((r) => ({
     id: r.referenceNumber, // UI uses referenceNumber as id (e.g., RPT-1048)
     dbId: r.id,
@@ -356,7 +392,7 @@ export async function listReports(
     updatedAt: r.updatedAt.toISOString(),
     resolvedAt: r.resolvedAt?.toISOString() ?? null,
     closedAt: r.closedAt?.toISOString() ?? null,
-    images: [],
+    images: imageMap[r.id] ?? [],
     aiAnalysis: aiMap[r.id] ?? null,
   }))
 

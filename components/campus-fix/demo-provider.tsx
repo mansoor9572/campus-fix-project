@@ -211,33 +211,77 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
             : "medium"
 
       if (buildingObj && categoryObj) {
-        fetch("/api/reports", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: input.title,
-            description: input.description,
-            buildingId: buildingObj.id,
-            categoryId: categoryObj.id,
-            room: input.room,
-            priority: apiPriority,
-          }),
-        })
-          .then(async (res) => {
-            if (!res.ok) {
-              const data = await res.json().catch(() => ({}))
+        // Upload images first, then create report with image references
+        ;(async () => {
+          try {
+            const uploadedImages: Array<{
+              storageKey: string
+              fileUrl: string
+              originalFilename: string
+              mimeType: string
+              fileSize: number
+            }> = []
+
+            // Upload each base64 image via /api/uploads
+            for (const imgSrc of input.images) {
+              if (imgSrc.startsWith("data:")) {
+                // Convert base64 data URL to a File object
+                const res = await fetch(imgSrc)
+                const blob = await res.blob()
+                const formData = new FormData()
+                formData.append("file", blob, "photo.jpg")
+
+                const uploadRes = await fetch("/api/uploads", {
+                  method: "POST",
+                  body: formData,
+                })
+                if (uploadRes.ok) {
+                  const uploadData = await uploadRes.json()
+                  uploadedImages.push({
+                    storageKey: uploadData.storageKey,
+                    fileUrl: uploadData.fileUrl,
+                    originalFilename: uploadData.originalFilename,
+                    mimeType: uploadData.mimeType,
+                    fileSize: uploadData.fileSize,
+                  })
+                }
+              }
+            }
+
+            const apiRes = await fetch("/api/reports", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: input.title,
+                description: input.description,
+                buildingId: buildingObj.id,
+                categoryId: categoryObj.id,
+                room: input.room,
+                priority: apiPriority,
+                images: uploadedImages,
+              }),
+            })
+
+            if (!apiRes.ok) {
+              const data = await apiRes.json().catch(() => ({}))
               throw new Error(data.message || "Failed to submit report.")
             }
-            const serverReport = await res.json()
+            const serverReport = await apiRes.json()
             // Replace optimistic report with real database record
+            // Use persistent image URLs from server instead of base64
             setReports((current) =>
-              current.map((r) => (r.id === id ? { ...serverReport, images: input.images } : r))
+              current.map((r) =>
+                r.id === id
+                  ? { ...serverReport, images: serverReport.images?.length ? serverReport.images : input.images }
+                  : r
+              )
             )
-          })
-          .catch((err) => {
-            console.error("Report submit error:", err)
-            toast.error(err.message || "Failed to save report to server.")
-          })
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error("Unknown error")
+            console.error("Report submit error:", error)
+            toast.error(error.message || "Failed to save report to server.")
+          }
+        })()
       }
     }
 
