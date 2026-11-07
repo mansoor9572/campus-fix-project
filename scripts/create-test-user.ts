@@ -33,6 +33,8 @@ async function main() {
     process.exit(1)
   }
 
+  const passwordHash = await hash(password, 12)
+
   // Check if user already exists
   const [existing] = await db.select({ id: users.id, email: users.email, role: users.role, emailVerified: users.emailVerified })
     .from(users).where(eq(users.email, email)).limit(1)
@@ -40,23 +42,23 @@ async function main() {
   if (existing) {
     console.log(`User ${existing.email} already exists (role=${existing.role}, verified=${!!existing.emailVerified}).`)
 
-    // If not verified, verify them now
-    if (!existing.emailVerified) {
-      await db.update(users).set({ emailVerified: new Date(), updatedAt: new Date() }).where(eq(users.id, existing.id))
-      console.log("  → Marked as email-verified.")
-    }
+    // Update password and ensure verified
+    await db.update(users).set({
+      password: passwordHash,
+      emailVerified: new Date(),
+      isActive: true,
+      updatedAt: new Date(),
+      ...(makeAdmin ? { role: "admin" } : makeStaff ? { role: "maintenance_staff" } : {}),
+    }).where(eq(users.id, existing.id))
 
-    // If --admin requested and user is student, promote
-    if (makeAdmin && existing.role === "student") {
-      await db.update(users).set({ role: "admin", updatedAt: new Date() }).where(eq(users.id, existing.id))
-      console.log("  → Promoted to admin.")
-    }
-
+    console.log(`  → Password updated successfully.`)
+    console.log(`  → Email verified: yes`)
+    if (makeAdmin) console.log(`  → Role set to admin.`)
+    if (makeStaff) console.log(`  → Role set to maintenance_staff.`)
+    console.log()
+    console.log(`You can now sign in at http://localhost:3000/login`)
     process.exit(0)
   }
-
-  // Create new user
-  const passwordHash = await hash(password, 12)
   const role = makeAdmin ? "admin" : makeStaff ? "maintenance_staff" : "student"
 
   const [created] = await db.insert(users).values({
