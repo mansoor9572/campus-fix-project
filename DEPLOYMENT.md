@@ -99,3 +99,4 @@ This creates an active, email-verified administrator account ready for immediate
 - [x] **Image Persistence**: Report photos are stored with UUID storage keys and linked in the `report_images` table.
 - [x] **Live Metrics**: Dashboard aggregations, resolution rates, and team workloads calculate directly on the database.
 - [x] **Build Verification**: Zero TypeScript errors (`tsc --noEmit`), zero ESLint errors (`eslint .`).
+

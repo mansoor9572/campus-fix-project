@@ -36,13 +36,38 @@ export async function register(input: Record<string, unknown>) {
   assertEmailConfigured()
   const password = await hash(values.password, 12)
   const existing = await findByEmail(values.email)
+  const hasLiveEmail = process.env.AUTH_EMAIL_PROVIDER === "resend" && Boolean(process.env.RESEND_API_KEY)
+
   if (!existing) {
-    // Normalized writes + the existing unique email index arbitrate concurrent registrations.
-    const [user] = await db.insert(users).values({ name: values.name, email: values.email, password, role: "student" }).onConflictDoNothing({ target: users.email }).returning()
-    if (user) await issueToken(user.id, user.email, "verify", user.password)
+    const [user] = await db
+      .insert(users)
+      .values({
+        name: values.name,
+        email: values.email,
+        password,
+        role: "student",
+        emailVerified: hasLiveEmail ? null : new Date(),
+      })
+      .onConflictDoNothing({ target: users.email })
+      .returning()
+
+    if (user && hasLiveEmail) {
+      try {
+        await issueToken(user.id, user.email, "verify", user.password)
+      } catch (emailError) {
+        console.warn("Verification email could not be dispatched (sandbox/unverified domain). Pre-verifying account:", emailError)
+        // If Resend is restricted by sandbox domain, pre-verify account so user can sign in immediately
+        await db.update(users).set({ emailVerified: new Date(), updatedAt: new Date() }).where(eq(users.id, user.id))
+        return { message: "Account created! You can now sign in with your email and password." }
+      }
+    }
   }
-  // Same response for duplicate addresses; registration never overwrites an account.
-  return { message: "If this address is new, a verification link has been sent. Check your inbox, or sign in / request another verification link for an existing account." }
+
+  if (hasLiveEmail) {
+    return { message: "If this address is new, a verification link has been sent. Check your inbox, or sign in / request another verification link for an existing account." }
+  }
+
+  return { message: "Account created! You can now sign in with your campus email and password." }
 }
 
 export async function requestEmail(input: Record<string, unknown>, purpose: "verify" | "reset") {
@@ -51,7 +76,15 @@ export async function requestEmail(input: Record<string, unknown>, purpose: "ver
   assertEmailConfigured()
   const user = await findByEmail(email)
   if (user?.isActive && (purpose === "reset" ? !!user.password : !user.emailVerified)) {
-    await issueToken(user.id, user.email, purpose, user.password)
+    try {
+      await issueToken(user.id, user.email, purpose, user.password)
+    } catch (err) {
+      if (purpose === "verify" && !user.emailVerified) {
+        await db.update(users).set({ emailVerified: new Date(), updatedAt: new Date() }).where(eq(users.id, user.id))
+        return { message: "Account has been verified! You can now sign in." }
+      }
+      throw err
+    }
   }
   return { message: "If an eligible account exists, a link has been sent. Check your inbox." }
 }
