@@ -59,29 +59,47 @@ export async function POST(request: Request) {
     const ext = MIME_TO_EXT[file.type] || extname(file.name) || ".jpg"
     const storageKey = `${id}${ext}`
 
-    // Ensure uploads directory exists
-    const uploadsDir = join(process.cwd(), "public", "uploads")
-    await mkdir(uploadsDir, { recursive: true })
-
-    // Write file to disk
+    // Write file to disk (or fallback to data URL if filesystem is read-only in serverless)
     const bytes = await file.arrayBuffer()
-    const filePath = join(uploadsDir, storageKey)
-    await writeFile(filePath, Buffer.from(bytes))
+    const buffer = Buffer.from(bytes)
 
-    // Public URL for the uploaded file
-    const fileUrl = `/uploads/${storageKey}`
+    try {
+      // Ensure uploads directory exists
+      const uploadsDir = join(process.cwd(), "public", "uploads")
+      await mkdir(uploadsDir, { recursive: true })
 
-    return Response.json(
-      {
-        id,
-        storageKey,
-        fileUrl,
-        originalFilename: file.name,
-        mimeType: file.type,
-        fileSize: file.size,
-      },
-      { status: 201 }
-    )
+      const filePath = join(uploadsDir, storageKey)
+      await writeFile(filePath, buffer)
+
+      // Public URL for the uploaded file
+      const fileUrl = `/uploads/${storageKey}`
+
+      return Response.json(
+        {
+          id,
+          storageKey,
+          fileUrl,
+          originalFilename: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        },
+        { status: 201 }
+      )
+    } catch (writeErr) {
+      console.warn("Local uploads directory write failed, falling back to base64 data URL:", writeErr)
+      const dataUrl = `data:${file.type};base64,${buffer.toString("base64")}`
+      return Response.json(
+        {
+          id,
+          storageKey,
+          fileUrl: dataUrl,
+          originalFilename: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        },
+        { status: 201 }
+      )
+    }
   } catch (error) {
     console.error("Upload error:", error)
     return Response.json(
