@@ -270,6 +270,10 @@ img { display: block; max-width: 100%; }
 .auth-form-wrap h2 { margin: 0; color: #1b314b; font-size: 29px; font-weight: 730; letter-spacing: -.05em; line-height: 1.2; }
 .auth-subtitle { margin: 9px 0 24px; color: #758397; font-size: 14px; }
 .auth-form { display: flex; flex-direction: column; gap: 19px; }
+.auth-google { width: 100%; min-height: 45px; gap: 12px; border-radius: 10px; font-size: 14px; }
+.auth-google-note { margin: 10px 0 0; color: #758397; font-size: 12px; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: #758397; font-size: 12px; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: #e2e8f0; }
 .auth-demo-box { padding: 14px; border: 1px solid #e1eaf1; border-radius: 13px; background: #f8fafc; }
 .auth-demo-header { display: flex; align-items: center; gap: 7px; margin-bottom: 11px; color: #485f77; font-size: 11px; font-weight: 700; }
 .auth-demo-header svg { width: 14px; height: 14px; color: #397bb7; }

@@ -2,7 +2,8 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { normalizeEmail, validatePassword, validateRegistration, validateToken } from "../lib/auth/validation"
 import { routePolicy, dashboardFor } from "../lib/auth/policy"
-import { digest, newToken } from "../lib/auth/crypto"
+import { digest, newToken, privateKey, sessionCredentialVersion } from "../lib/auth/crypto"
+import { trustedGoogleEmail } from "../lib/auth/google"
 
 test("email normalization and malformed input", () => {
   assert.equal(normalizeEmail("  Student@Campus.EDU "), "student@campus.edu")
@@ -35,4 +36,29 @@ test("link tokens have 256 bits of randomness and only hashes are persisted", ()
   assert.notEqual(digest(first), first)
   assert.equal(digest(first).length, 64)
   assert.throws(() => validateToken("bad"))
+})
+
+test("Google linking requires a verified address Google is authoritative for", () => {
+  const profile = { sub: "google-subject", email: " Student@Gmail.com ", email_verified: true }
+  assert.equal(trustedGoogleEmail(profile), "student@gmail.com")
+  assert.equal(trustedGoogleEmail({ ...profile, email: "student@campus.edu", hd: "campus.edu" }), "student@campus.edu")
+  for (const invalid of [undefined, {}, { ...profile, sub: "" }, { ...profile, email_verified: false },
+    { ...profile, email_verified: "true" }, { ...profile, email: "student@elsewhere.com" },
+    { ...profile, email: "student@elsewhere.com", hd: " " }, { ...profile, email: "not-an-email" }]) {
+    assert.equal(trustedGoogleEmail(invalid), null)
+  }
+})
+
+test("Google-only session fingerprints are user-specific and invalidated by password changes", () => {
+  const originalSecret = process.env.AUTH_SECRET
+  process.env.AUTH_SECRET = "unit-test-secret-with-at-least-32-characters"
+  try {
+    const googleVersion = sessionCredentialVersion("user-one", null)
+    assert.notEqual(googleVersion, sessionCredentialVersion("user-two", null))
+    assert.notEqual(googleVersion, sessionCredentialVersion("user-one", "new-password-hash"))
+    assert.equal(sessionCredentialVersion("user-one", "existing-hash"), privateKey("existing-hash"))
+  } finally {
+    if (originalSecret === undefined) delete process.env.AUTH_SECRET
+    else process.env.AUTH_SECRET = originalSecret
+  }
 })

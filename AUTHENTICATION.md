@@ -20,6 +20,26 @@ References: [Auth.js Credentials](https://authjs.dev/getting-started/authenticat
 
 ## Configuration
 
+### Continue with Google
+
+1. In [Google Cloud Console](https://console.cloud.google.com/auth/clients), configure the Google Auth Platform branding and audience, then create an OAuth client with application type **Web application**. If the app is in testing, add your Google account as a test user.
+2. Add the authorized redirect URI `http://localhost:3000/api/auth/callback/google`. For deployment, add `https://YOUR_DOMAIN/api/auth/callback/google` as well. The scheme, host, port, and path must match the app URL exactly.
+3. Fill in the server-only values in `.env.local` and restart `pnpm dev`:
+
+   ```dotenv
+   AUTH_GOOGLE_ID=your-client-id.apps.googleusercontent.com
+   AUTH_GOOGLE_SECRET=your-client-secret
+   AUTH_URL=http://localhost:3000
+   ```
+
+The login button is disabled until both Google credentials are configured. Google sign-in does not require Resend, a CampusFix password, or a separate CampusFix verification email. New Google users receive the database's default `student` role. Verified Gmail and Google Workspace addresses can link to matching existing accounts, preserving their reports and roles; other Google accounts using third-party email addresses must use CampusFix email/password sign-in. Normalized duplicate legacy addresses fail closed.
+
+Auth.js validates the Google OIDC response and persists the stable Google subject in `accounts`. CampusFix creates an eight-hour revocable session only for an active user with a matching linked Google account and email. Google-only users have a user-specific credential fingerprint; password users retain the existing password fingerprint, including reset revocation. The Google flow returns through `/login` to the user's role-specific dashboard. No database migration is needed.
+
+References: [Auth.js Google setup](https://authjs.dev/getting-started/providers/google), [Google email authority checks](https://developers.google.com/identity/sign-in/ios/backend-auth).
+
+### Other settings
+
 The existing local environment contained `DATABASE_URL` and an insufficiently short `AUTH_SECRET`, with no email credentials. A fresh cryptographically random local secret was generated during implementation; the database connection was preserved. Add missing variables from `.env.example`. Provision a separate stable random secret in production.
 
 | Variable | Purpose |

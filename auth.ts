@@ -1,16 +1,22 @@
 import "server-only"
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
+import Google from "next-auth/providers/google"
 import { DrizzleAdapter } from "@auth/drizzle-adapter"
 import { db, users, accounts, sessions, verificationTokens } from "@/lib/db"
-import { authenticate, readSession, revokeSession } from "@/lib/auth/service"
+import { authenticate, createGoogleSession, findByEmail, readSession, revokeSession } from "@/lib/auth/service"
+import { googleConfigured, trustedGoogleEmail } from "@/lib/auth/google"
+import { normalizeEmail } from "@/lib/auth/validation"
 import { SESSION_MAX_AGE } from "@/lib/auth/policy"
 import { privateKey } from "@/lib/auth/crypto"
 
 export const { handlers, auth, signIn, signOut } = NextAuth(() => {
   privateKey("configuration-check")
   return {
-    adapter: DrizzleAdapter(db, { usersTable: users, accountsTable: accounts, sessionsTable: sessions, verificationTokensTable: verificationTokens }),
+    adapter: {
+      ...DrizzleAdapter(db, { usersTable: users, accountsTable: accounts, sessionsTable: sessions, verificationTokensTable: verificationTokens }),
+      async getUserByEmail(email) { return (await findByEmail(normalizeEmail(email))) ?? null },
+    },
     // beta.32 Credentials explicitly requires JWT. The existing sessions table
     // supplies revocation/absolute expiry; Auth.js handles encrypted cookies and CSRF.
     session: { strategy: "jwt", maxAge: SESSION_MAX_AGE },
@@ -20,13 +26,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => {
       async authorize(credentials) {
         return authenticate(credentials)
       },
-    })],
+    }), ...(googleConfigured() ? [Google({
+      clientId: process.env.AUTH_GOOGLE_ID,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET,
+      // The signIn callback requires an authoritative, verified Google email.
+      allowDangerousEmailAccountLinking: true,
+      authorization: { params: { prompt: "select_account" } },
+      profile(profile) {
+        const email = normalizeEmail(profile.email)
+        return { id: profile.sub, name: profile.name || email, email, image: profile.picture }
+      },
+    })] : [])],
     callbacks: {
-      async jwt({ token, user }) {
+      async signIn({ account, profile }) {
+        if (account?.provider !== "google") return true
+        return trustedGoogleEmail(profile) ? true : "/login?error=GoogleEmailNotSupported"
+      },
+      async jwt({ token, user, account, profile }) {
         if (user) {
-          token.sid = user.sessionId
-          token.sessionExpires = user.sessionExpires
-          token.credentialVersion = user.credentialVersion
+          if (account?.provider === "google") {
+            const email = trustedGoogleEmail(profile)
+            if (!user.id || !email) return null
+            const googleSession = await createGoogleSession(user.id, account.providerAccountId, email)
+            if (!googleSession) return null
+            token.sid = googleSession.sessionId
+            token.sessionExpires = googleSession.sessionExpires
+            token.credentialVersion = googleSession.credentialVersion
+          } else {
+            token.sid = user.sessionId
+            token.sessionExpires = user.sessionExpires
+            token.credentialVersion = user.credentialVersion
+          }
         }
         if (typeof token.sid !== "string" || typeof token.credentialVersion !== "string") return null
         const current = await readSession(token.sid, token.credentialVersion)

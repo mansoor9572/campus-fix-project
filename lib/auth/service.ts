@@ -1,7 +1,7 @@
 import { compare, hash } from "bcryptjs"
 import { and, eq, gt, sql } from "drizzle-orm"
 import { db, users, sessions, verificationTokens } from "@/lib/db"
-import { digest, newToken, privateKey } from "./crypto"
+import { digest, newToken, privateKey, sessionCredentialVersion } from "./crypto"
 import { assertEmailConfigured, sendAuthEmail } from "./email"
 import { limitAuthRequest } from "./rate-limit"
 import { SESSION_MAX_AGE, SHORT_SESSION_AGE } from "./policy"
@@ -10,7 +10,7 @@ import { AuthInputError, normalizeEmail, validatePassword, validateRegistration,
 const dummyHash = "$2b$12$C6UzMDM.H6dfI/f/IKcEe.2bHYBvqoWqGZkTEKl1C2TiL9G2AqC.W"
 const invalidLink = () => new AuthInputError("This link is invalid or expired. Request a new link.")
 
-async function findByEmail(email: string) {
+export async function findByEmail(email: string) {
   // Also recognize pre-existing mixed-case addresses without rewriting existing data.
   const matches = await db.select().from(users).where(sql`lower(trim(${users.email})) = ${email}`).limit(2)
   if (matches.length > 1) throw new Error("Ambiguous normalized email; operator review required.")
@@ -160,8 +160,33 @@ export async function readSession(sessionId: string, credentialVersion: string) 
   const [row] = await db.select({ id: users.id, name: users.name, email: users.email, image: users.image, role: users.role, password: users.password, expires: sessions.expires })
     .from(sessions).innerJoin(users, eq(sessions.userId, users.id))
     .where(and(eq(sessions.sessionToken, digest(sessionId)), gt(sessions.expires, new Date()), eq(users.isActive, true), sql`${users.emailVerified} IS NOT NULL`)).limit(1)
-  if (!row?.password || privateKey(row.password) !== credentialVersion) return null
+  if (!row || sessionCredentialVersion(row.id, row.password) !== credentialVersion) return null
   return { id: row.id, name: row.name, email: row.email, image: row.image, role: row.role, expires: row.expires }
+}
+
+// Called only after Auth.js validates Google and links its stable subject ID.
+export async function createGoogleSession(userId: string, subject: string, email: string) {
+  const sessionId = newToken()
+  const expires = new Date(Date.now() + SHORT_SESSION_AGE * 1000)
+  const result = await db.execute(sql`
+    WITH verified_user AS (
+      UPDATE users SET email_verified = COALESCE(email_verified, now()), updated_at = now()
+      WHERE id = ${userId}::uuid AND is_active = true AND lower(trim(email)) = ${email}
+      AND EXISTS (
+        SELECT 1 FROM accounts WHERE user_id = users.id
+        AND provider = 'google' AND provider_account_id = ${subject}
+      )
+      RETURNING id, password
+    ), created_session AS (
+      INSERT INTO sessions (session_token, user_id, expires)
+      SELECT ${digest(sessionId)}, id, ${expires.toISOString()}::timestamp FROM verified_user
+      RETURNING user_id
+    )
+    SELECT password FROM verified_user JOIN created_session ON verified_user.id = created_session.user_id
+  `)
+  const row = result.rows[0]
+  if (!row || (row.password !== null && typeof row.password !== "string")) return null
+  return { sessionId, sessionExpires: expires.getTime(), credentialVersion: sessionCredentialVersion(userId, row.password) }
 }
 
 export async function revokeSession(sessionId: string) {
