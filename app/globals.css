@@ -494,6 +494,8 @@ img { display: block; max-width: 100%; }
 .building-search-input { display: flex; align-items: center; gap: 8px; }
 .building-search-input > svg { width: 18px; flex: 0 0 18px; color: #758397; }
 .building-search-input input { min-width: 0; flex: 1; }
+.building-search-input button { flex-shrink: 0; }
+.building-chevron-open { transform: rotate(180deg); }
 .building-results { position: absolute; z-index: 30; left: 0; right: 0; top: 48px; max-height: 280px; overflow-y: auto; list-style: none; margin: 0; padding: 5px; border: 1px solid #dce4ed; border-radius: 10px; background: white; box-shadow: 0 8px 28px #17335020; }
 .building-results li { padding: 10px; border-radius: 6px; cursor: pointer; overflow-wrap: anywhere; }
 .building-results li:hover, .building-result-active { background: #edf4fc; }

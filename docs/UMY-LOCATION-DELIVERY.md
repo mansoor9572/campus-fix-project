@@ -1,10 +1,10 @@
 # UMY building directory and report locations
 
-Implementation and local validation completed on 8 November 2026. The SQL migration and directory seed are prepared but **have not been applied to any database**. No production deployment was performed. Database integration tests remain pending because a separate Neon test branch is not available.
+Implementation and local validation completed on 8 November 2026. The SQL migration and directory seed were subsequently **applied to the configured database** to resolve the building-directory loading error. Read-only checks confirmed all 27 UMY entries are active, the six existing buildings remain, and the existing report count is unchanged. No application deployment was performed during this follow-up. Database integration tests remain pending because a separate Neon test branch is not available.
 
 ## Student flow
 
-1. Search the database-backed building directory by name, building code, faculty, or an alternative name, then select a result.
+1. Open the building dropdown to browse every available building, or type a name, building code, faculty, or alternative name to filter it, then select a result. The dropdown arrow opens the full list even after an earlier selection.
 2. Type a required floor number or name (1–60 trimmed characters).
 3. Type a required room number or name (1–100 trimmed characters).
 4. Optionally enter additional location details (up to 500 trimmed characters).
@@ -24,7 +24,7 @@ Migration: `drizzle/0002_umy_directory_report_location.sql`, with matching Drizz
 - New report requests require the separate fields; old stored reports remain readable and can receive status updates without needing location backfills. Legacy `room` edits remain available on legacy rows. Mixing legacy and structured location edits is rejected.
 - Student lists/details, admin lists/details, maintenance task views, search, and CSV export include the new location fields. CSV exports floor, room number, and additional details in separate columns. Missing historical details fall back to the original `room` text.
 
-## Initial directory: 27 prepared entries
+## Initial directory: 27 seeded entries
 
 All entries below are **unverified**. They come from the user-supplied initial directory, not a newly verified official register. No coordinates or map URLs were invented. English display names, Indonesian names, supplied aliases, and associations are included in the seed. A dash means no confirmed building code was supplied.
 
@@ -74,17 +74,19 @@ Admins can maintain names, codes, aliases, faculty/type, descriptions, map URLs,
 | --- | --- |
 | TypeScript (`tsc --noEmit --incremental false`) | Passed |
 | Unit tests (auth, reports, uploads, AI, buildings/location) | 36 passed |
-| Isolated Playwright browser tests | 6 passed |
+| Isolated Playwright browser tests | 7 passed, including full-list dropdown and changing selections |
 | ESLint | Passed with existing image-element warnings |
 | Next.js production build | Passed |
 | Database integration runner | Skipped: no separate `TEST_DATABASE_URL` |
-| Live migration, seed, persistence and authorization integration | Not executed; pending test branch |
+| Configured database migration and seed | Applied; 27 active UMY entries verified with read-only queries |
+| Live report persistence and authorization integration | Not executed; pending test branch |
 
 The browser fixture is a separate Next app under `tests/fixtures/location`, not a production route. It runs the real UI components with mocked session/API data and does not connect to Neon. Browser checks cover the supplied search examples, empty results, clear/keyboard selection, required fields, separate request fields, optional details, length limits, mobile overflow, failed saves, directory failures, admin metadata, and legacy/new location display across all roles. It proves browser behavior, not live database persistence.
 
 Screenshots use synthetic test data:
 
 - [Desktop building search](screenshots/umy-building-search-desktop.png)
+- [Full building dropdown](screenshots/umy-building-dropdown-desktop.png)
 - [Mobile report form](screenshots/report-location-mobile.png)
 
 ## Test branch and rollout steps

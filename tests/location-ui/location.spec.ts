@@ -44,6 +44,28 @@ async function fillIssue(page: Page) {
   await page.getByLabel("Tell us a little more").fill("Water is leaking near the laboratory entrance.")
 }
 
+test("dropdown opens all supplied buildings and can search or change a selection", async ({ page }) => {
+  await mockApi(page)
+  await page.goto("/")
+  await page.getByRole("button", { name: "Show all buildings" }).click()
+  const list = page.getByRole("listbox", { name: "Matching buildings" })
+  await expect(list.getByRole("option")).toHaveCount(27)
+  await page.screenshot({ path: "docs/screenshots/umy-building-dropdown-desktop.png", fullPage: true })
+  await list.getByRole("option", { name: /Engineering Building F6/ }).click()
+  const field = page.getByRole("combobox", { name: "Building" })
+  await expect(field).toHaveValue("Engineering Building F6")
+  await page.getByRole("button", { name: "Show all buildings" }).click()
+  await expect(list.getByRole("option")).toHaveCount(27)
+  await expect(list.getByRole("option", { name: /Engineering Building F6/ })).toHaveAttribute("aria-selected", "true")
+  await field.fill("perpustakaan")
+  await expect(list.getByRole("option")).toHaveCount(1)
+  await list.getByRole("option", { name: /UMY Library/ }).click()
+  await expect(field).toHaveValue("UMY Library")
+  await page.getByRole("button", { name: "Show all buildings" }).click()
+  await page.getByRole("button", { name: "Close building list" }).click()
+  await expect(field).toHaveValue("UMY Library")
+})
+
 test("building search, clear, no-results and keyboard selection", async ({ page }) => {
   await mockApi(page)
   await page.goto("/")
