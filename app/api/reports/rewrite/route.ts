@@ -9,7 +9,14 @@ export const runtime = "nodejs"
 export async function POST(request: Request) {
   const auth = await authorizeApi(["student", "admin"])
   if (auth.error) return auth.error
-  if (request.headers.get("origin") !== new URL(request.url).origin) return Response.json({ message: "Invalid request origin." }, { status: 403 })
+  const origin = request.headers.get("origin")
+  if (origin) {
+    const originHost = new URL(origin).host
+    const requestHost = request.headers.get("x-forwarded-host") || request.headers.get("host") || new URL(request.url).host
+    if (originHost !== requestHost && origin !== new URL(request.url).origin) {
+      return Response.json({ message: "Invalid request origin." }, { status: 403 })
+    }
+  }
   try {
     if (Number(request.headers.get("content-length")) > 24000) throw new ReportError("Rewrite request is too large.", 413)
     const raw = await request.text()

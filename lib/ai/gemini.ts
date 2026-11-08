@@ -135,7 +135,12 @@ export async function triageFacilityIssue(input: AnalyzeInput): Promise<AiTriage
 
   try {
     const ai = new GoogleGenAI({ apiKey })
-    const model = process.env.GEMINI_MODEL || "gemini-3.8-flash"
+    const candidateModels = Array.from(new Set([
+      process.env.GEMINI_MODEL,
+      "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.8-flash",
+    ].filter(Boolean))) as string[]
 
     const systemInstruction = `You are an expert campus facilities engineer and maintenance triage specialist for a university.
 Analyze the student or staff report of an issue on campus.
@@ -167,17 +172,31 @@ Room/Location: ${input.room || "Unspecified"}`
       })
     }
 
-    const response = await ai.models.generateContent({
-      model,
-      contents,
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        temperature: 0.2,
-      },
-    })
+    let rawText = ""
+    let usedModel = "gemini-3.5-flash"
 
-    const rawText = response.text || ""
+    for (const model of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            temperature: 0.2,
+            abortSignal: AbortSignal.timeout(15000),
+          },
+        })
+        if (response.text) {
+          rawText = response.text
+          usedModel = model
+          break
+        }
+      } catch (err) {
+        console.warn(`Gemini triage failed with model ${model}:`, (err as Error)?.message)
+      }
+    }
+
     if (!rawText) {
       return localRuleBasedTriage(input)
     }
@@ -215,7 +234,7 @@ Room/Location: ${input.room || "Unspecified"}`
       confidence: typeof parsed.confidence === "number" ? Math.min(Math.max(parsed.confidence, 0.5), 0.99) : 0.88,
       requiresHumanReview: true,
       aiProvider: "Google Gemini",
-      modelName: model,
+      modelName: usedModel,
     }
   } catch (error) {
     console.error("Gemini API call failed, falling back to local triage:", (error as Error).message)
