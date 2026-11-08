@@ -32,6 +32,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useDemoData } from "@/components/campus-fix/demo-provider"
 import { BuildingSelector } from "./building-selector"
+import { ReportDescriptionField } from "./report-description-field"
+import { REPORT_TEXT_MAX, REPORT_TEXT_MIN, titleFromDescription } from "@/lib/reports/text"
 import { LOCATION_LIMITS, locationSummary } from "@/lib/reports/location"
 import {
   DemoBanner,
@@ -227,25 +229,21 @@ export function StudentReports() {
 }
 
 type ReportFormValues = {
-  title: string
   category: ReportCategory | ""
   building: string
   buildingId: string
   floor: string
   roomNumber: string
-  additionalDetails: string
   description: string
   priority: Priority
 }
 
 const initialFormValues: ReportFormValues = {
-  title: "",
   category: "",
   building: "",
   buildingId: "",
   floor: "",
   roomNumber: "",
-  additionalDetails: "",
   description: "",
   priority: "Medium",
 }
@@ -323,8 +321,8 @@ export function NewStudentReport() {
   }
 
   const analyze = async () => {
-    if (!values.title.trim() && !values.description.trim()) {
-      toast.info("Add a title or description before running AI triage.")
+    if (!values.description.trim()) {
+      toast.info("Describe the issue before running AI triage.")
       return
     }
     setAnalyzing(true)
@@ -333,8 +331,8 @@ export function NewStudentReport() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: values.title || "Facility issue",
-          description: values.description || values.title,
+          title: titleFromDescription(values.description),
+          description: values.description,
           building: values.building,
           room: locationSummary(values),
           image: image ? { base64: image.src, mimeType: "image/jpeg" } : undefined,
@@ -375,13 +373,11 @@ export function NewStudentReport() {
     event.preventDefault()
     if (submitting) return
     const nextErrors: Record<string, string> = {}
-    if (values.title.trim().length < 8) nextErrors.title = "Use at least 8 characters to describe the issue."
     if (!values.category) nextErrors.category = "Choose a category."
     if (!values.buildingId) nextErrors.building = "Search and select a building from the directory."
     if (!values.floor.trim() || values.floor.trim().length > LOCATION_LIMITS.floor) nextErrors.floor = "Enter a floor number or name (up to 60 characters)."
     if (!values.roomNumber.trim() || values.roomNumber.trim().length > LOCATION_LIMITS.roomNumber) nextErrors.roomNumber = "Enter a room number or name (up to 100 characters)."
-    if (values.additionalDetails.trim().length > LOCATION_LIMITS.additionalDetails) nextErrors.additionalDetails = "Use at most 500 characters."
-    if (values.description.trim().length < 20) nextErrors.description = "Add a little more detail (at least 20 characters)."
+    if (values.description.trim().length < REPORT_TEXT_MIN || values.description.trim().length > REPORT_TEXT_MAX) nextErrors.description = `Describe the issue in ${REPORT_TEXT_MIN} to ${REPORT_TEXT_MAX} characters.`
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length) {
       toast.error("Review the highlighted fields before submitting.")
@@ -391,13 +387,12 @@ export function NewStudentReport() {
     setSubmitting(true)
     try {
       const id = await addReport({
-        title: values.title.trim(),
+        title: titleFromDescription(values.description),
         category: values.category as ReportCategory,
         building: values.building,
         buildingId: values.buildingId,
         floor: values.floor.trim(),
         roomNumber: values.roomNumber.trim(),
-        additionalDetails: values.additionalDetails.trim(),
         description: values.description.trim(),
         priority: values.priority,
         images: image ? [image.src] : [],
@@ -428,11 +423,7 @@ export function NewStudentReport() {
           <form onSubmit={submit} noValidate>
             {errors.submit && <p className="auth-error" role="alert">{errors.submit}</p>}
             <div className="form-two-column">
-              <Field data-invalid={Boolean(errors.title)} className="form-span-2">
-                <FieldLabel htmlFor="report-title">What needs attention? <span aria-hidden="true">*</span></FieldLabel>
-                <Input id="report-title" className="form-control" value={values.title} onChange={(event) => updateValue("title", event.target.value)} placeholder="e.g. Air conditioning is leaking in room A101" aria-invalid={Boolean(errors.title)} maxLength={120} />
-                {errors.title ? <FieldError>{errors.title}</FieldError> : <FieldDescription>Keep it short and specific so your report is easy to scan.</FieldDescription>}
-              </Field>
+              <ReportDescriptionField value={values.description} onChange={text => updateValue("description", text)} error={errors.description} disabled={submitting} />
 
               <Field data-invalid={Boolean(errors.category)}>
                 <FieldLabel htmlFor="report-category">Category <span aria-hidden="true">*</span></FieldLabel>
@@ -461,17 +452,6 @@ export function NewStudentReport() {
                 <FieldLabel htmlFor="report-room">Room Number <span aria-hidden="true">*</span></FieldLabel>
                 <Input id="report-room" type="text" className="form-control" value={values.roomNumber} onChange={event => updateValue("roomNumber", event.target.value)} placeholder="e.g. F6.201, Room 205, Laboratory 3" required aria-invalid={Boolean(errors.roomNumber)} maxLength={LOCATION_LIMITS.roomNumber} />
                 {errors.roomNumber ? <FieldError>{errors.roomNumber}</FieldError> : <FieldDescription>Type the room number or name.</FieldDescription>}
-              </Field>
-              <Field data-invalid={Boolean(errors.additionalDetails)} className="form-span-2">
-                <FieldLabel htmlFor="report-additional-details">Additional Details <span className="optional-label">Optional</span></FieldLabel>
-                <Textarea id="report-additional-details" className="form-control" value={values.additionalDetails} onChange={event => updateValue("additionalDetails", event.target.value)} placeholder="e.g. Near the elevator, beside the main entrance" rows={3} maxLength={LOCATION_LIMITS.additionalDetails} aria-invalid={Boolean(errors.additionalDetails)} />
-                {errors.additionalDetails ? <FieldError>{errors.additionalDetails}</FieldError> : <FieldDescription>{values.additionalDetails.length}/{LOCATION_LIMITS.additionalDetails} characters</FieldDescription>}
-              </Field>
-
-              <Field data-invalid={Boolean(errors.description)} className="form-span-2">
-                <FieldLabel htmlFor="report-description">Tell us a little more <span aria-hidden="true">*</span></FieldLabel>
-                <Textarea id="report-description" className="form-control" value={values.description} onChange={(event) => updateValue("description", event.target.value)} placeholder="What happened? When did you notice it? Is there anything the team should know before arriving?" aria-invalid={Boolean(errors.description)} maxLength={1200} rows={5} />
-                {errors.description ? <FieldError>{errors.description}</FieldError> : <FieldDescription>{values.description.length}/1200 characters · Include useful details, but avoid personal or sensitive information.</FieldDescription>}
               </Field>
             </div>
 
@@ -505,7 +485,7 @@ export function NewStudentReport() {
             <div className="priority-control-row">
               <div className="priority-control-copy">
                 <span className="priority-control-label">Suggested priority</span>
-                {analyzed ? <PriorityBadge priority={values.priority} /> : <span className="unanalysed-label">Run AI triage to analyze title, description, and photo.</span>}
+                {analyzed ? <PriorityBadge priority={values.priority} /> : <span className="unanalysed-label">Run AI triage to analyze your report and photo.</span>}
               </div>
               <div className="priority-control-actions">
                 <select aria-label="Set report priority" className="form-select priority-select" value={values.priority} onChange={(event) => updateValue("priority", event.target.value as Priority)}>
@@ -542,7 +522,7 @@ export function NewStudentReport() {
                 <span className="ai-insight-icon"><Info aria-hidden="true" /></span>
                 <div className="ai-insight-copy">
                   <strong>AI Facility Triage</strong>
-                  <p>Click &ldquo;Analyze issue&rdquo; to have Google Gemini evaluate your title, description, and photo to automatically suggest the category, priority, and maintenance department.</p>
+                  <p>Click &ldquo;Analyze issue&rdquo; to have Google Gemini evaluate your report and photo to automatically suggest the category, priority, and maintenance department.</p>
                 </div>
               </div>
             )}

@@ -490,6 +490,12 @@ img { display: block; max-width: 100%; }
 .form-card textarea.form-control { min-height: 116px; padding-top: 10px; resize: vertical; }
 .form-two-column { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
 .form-span-2 { grid-column: span 2; }
+.report-rewrite-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.report-rewrite-actions > span, .report-rewrite-preview > p:not(.report-rewrite-text) { color: #64748b; font-size: 12px; }
+.report-rewrite-preview { min-width: 0; margin-top: 8px; padding: 16px; border: 1px solid #dce5ed; border-radius: 10px; background: #f5f8fc; }
+.report-rewrite-preview > strong { color: #253c56; font-size: 13px; }
+.report-rewrite-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; font-size: 14px; line-height: 1.6; }
+.report-rewrite-error { color: #b42318; font-size: 13px; }
 .building-selector { position: relative; min-width: 0; }
 .building-search-input { display: flex; align-items: center; gap: 8px; }
 .building-search-input > svg { width: 18px; flex: 0 0 18px; color: #758397; }

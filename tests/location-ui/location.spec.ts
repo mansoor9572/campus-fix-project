@@ -37,11 +37,10 @@ async function mockApi(page: Page, options: { failSave?: boolean; existing?: boo
 }
 
 async function fillIssue(page: Page) {
-  await page.getByLabel("What needs attention?").fill("Leaking air conditioner")
+  await page.getByLabel("What needs attention?").fill("The air conditioner is leaking water near the laboratory entrance.")
   await page.getByLabel("Category", { exact: false }).first().selectOption("HVAC")
   await page.getByRole("combobox", { name: "Building" }).fill("F6")
   await page.getByRole("option", { name: /Engineering Building F6/ }).click()
-  await page.getByLabel("Tell us a little more").fill("Water is leaking near the laboratory entrance.")
 }
 
 test("dropdown opens all supplied buildings and can search or change a selection", async ({ page }) => {
@@ -156,4 +155,95 @@ test("directory load failure shows retry and cannot submit an arbitrary building
   await page.getByRole("button", { name: "Submit report" }).click()
   await expect(page.getByText("Search and select a building from the directory.")).toBeVisible()
   expect(posted).toHaveLength(0)
+})
+
+test("one report field saves all details without requiring AI", async ({ page }) => {
+  const posted = await mockApi(page)
+  let rewrites = 0
+  await page.route("**/api/reports/rewrite", route => { rewrites++; return route.abort() })
+  await page.goto("/")
+  await fillIssue(page)
+  await expect(page.getByLabel("Tell us a little more")).toHaveCount(0)
+  const field = page.getByLabel("What needs attention?")
+  await expect(field).toHaveAttribute("maxlength", "4000")
+  const text = "Water has been leaking from the AC since this morning.\n".repeat(60).trim()
+  await field.fill(text)
+  await page.getByLabel("Floor", { exact: false }).first().fill("Ground Floor")
+  await page.getByLabel("Room Number", { exact: false }).fill("101")
+  await page.getByRole("button", { name: "Submit report" }).click()
+  await expect(page).toHaveURL(/\/student\/reports$/)
+  expect(posted[0].description).toBe(text)
+  expect(String(posted[0].title).length).toBeLessThanOrEqual(120)
+  expect(rewrites).toBe(0)
+})
+
+test("AI rewrite is reviewed before applying, can be dismissed and undone on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  const original = "ac is leaking water since morning near the lab entrance"
+  const suggestion = "The air conditioner has been leaking water near the laboratory entrance since this morning."
+  await page.route("**/api/reports/rewrite", route => {
+    expect(route.request().postDataJSON()).toEqual({ text: original })
+    return route.fulfill({ json: { text: suggestion } })
+  })
+  await page.goto("/")
+  const field = page.getByLabel("What needs attention?")
+  const rewrite = page.getByRole("button", { name: "Rewrite with AI" })
+  await expect(rewrite).toBeDisabled()
+  await field.fill(original)
+  await rewrite.click()
+  const preview = page.getByRole("region", { name: "AI rewrite suggestion" })
+  await expect(preview).toContainText(suggestion)
+  await expect(field).toHaveValue(original)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: "docs/screenshots/report-rewrite-mobile.png", fullPage: true })
+  await page.getByRole("button", { name: "Keep my wording" }).click()
+  await expect(preview).toHaveCount(0)
+  await expect(field).toHaveValue(original)
+  await rewrite.click()
+  await page.getByRole("button", { name: "Use this wording" }).click()
+  await expect(field).toHaveValue(suggestion)
+  await page.getByRole("button", { name: "Undo rewrite" }).click()
+  await expect(field).toHaveValue(original)
+})
+
+test("AI failure leaves the original report available for submission", async ({ page }) => {
+  const posted = await mockApi(page)
+  await page.route("**/api/reports/rewrite", route => route.fulfill({ status: 503, json: { message: "AI rewriting is unavailable right now." } }))
+  await page.goto("/")
+  await fillIssue(page)
+  const field = page.getByLabel("What needs attention?")
+  const original = await field.inputValue()
+  await page.getByRole("button", { name: "Rewrite with AI" }).click()
+  await expect(page.getByRole("alert").filter({ hasText: "AI rewriting is unavailable" })).toBeVisible()
+  await expect(field).toHaveValue(original)
+  await page.getByLabel("Floor", { exact: false }).first().fill("Ground Floor")
+  await page.getByLabel("Room Number", { exact: false }).fill("101")
+  await page.getByRole("button", { name: "Submit report" }).click()
+  await expect(page).toHaveURL(/\/student\/reports$/)
+  expect(posted[0].description).toBe(original)
+})
+
+test("typing during an AI request discards stale wording", async ({ page }) => {
+  await mockApi(page)
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let received!: () => void
+  const started = new Promise<void>(resolve => { received = resolve })
+  await page.route("**/api/reports/rewrite", async route => {
+    received()
+    await gate
+    await route.fulfill({ json: { text: "Old AI suggestion about a leaking air conditioner." } })
+  })
+  await page.goto("/")
+  const field = page.getByLabel("What needs attention?")
+  await field.fill("The air conditioner is leaking near the entrance.")
+  await page.getByRole("button", { name: "Rewrite with AI" }).click()
+  await started
+  const revised = "The air conditioner stopped leaking, but the floor is still wet."
+  await field.fill(revised)
+  release()
+  await expect(page.getByRole("button", { name: "Rewrite with AI" })).toBeEnabled()
+  await expect(field).toHaveValue(revised)
+  await expect(page.getByRole("region", { name: "AI rewrite suggestion" })).toHaveCount(0)
 })

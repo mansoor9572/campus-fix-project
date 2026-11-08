@@ -1,5 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import { titleFromDescription } from "../lib/reports/text"
 import { canAccessReport, isTerminal, priorityLabels, statusLabels, transitions } from "../lib/reports/policy"
 import {
   createInput,
@@ -11,6 +12,20 @@ import {
 
 const validUuid = "11111111-1111-4111-8111-111111111111"
 const validUuid2 = "22222222-2222-4222-8222-222222222222"
+
+test("single report text preserves the full description with a compatible list title", () => {
+  const description = "Water has been leaking from the AC since this morning.\n".repeat(60).trim()
+  const result = createInput({ title: titleFromDescription(description), description, buildingId: validUuid, categoryId: validUuid2, floor: "Ground Floor", roomNumber: "101" })
+  assert.equal(result.description, description)
+  assert.ok(result.title.length >= 8 && result.title.length <= 120)
+  assert.ok(!result.title.includes("\n"))
+  assert.equal(titleFromDescription("AC leaks above the entrance."), "AC leaks above the entrance.")
+  for (const text of ["a".repeat(4000), " \n ".repeat(20) + "broken", "😀".repeat(90)]) {
+    const title = titleFromDescription(text)
+    assert.ok(title.length >= 8 && title.length <= 120)
+    assert.equal(title.isWellFormed(), true)
+  }
+})
 
 test("report creation validation: valid inputs and defaults", () => {
   const raw = {

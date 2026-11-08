@@ -26,7 +26,7 @@ export type NewReportInput = {
   buildingId: string
   floor: string
   roomNumber: string
-  additionalDetails: string
+  additionalDetails?: string
   priority: Priority
   images: string[]
 }
@@ -218,7 +218,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: input.title, description: input.description,
         buildingId: input.buildingId, categoryId: category.id, floor: input.floor,
-        roomNumber: input.roomNumber, additionalDetails: input.additionalDetails,
+        roomNumber: input.roomNumber, additionalDetails: input.additionalDetails || "",
         priority: input.priority === "Urgent" || input.priority === "High" ? "high" : input.priority.toLowerCase(),
         images: uploadedImages }),
     })

@@ -1,6 +1,36 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { triageFacilityIssue } from "../lib/ai/gemini"
+import { parseRewriteOutput, rewriteInput, rewriteReportText } from "../lib/ai/rewrite"
+import { ReportError } from "../lib/reports/validation"
+
+test("rewrite validation accepts full reports and rejects invalid input", () => {
+  const text = "Air menetes di ruang F6.201 sejak pukul 09.00.\nLantainya basah."
+  assert.equal(rewriteInput({ text }), text)
+  assert.equal(rewriteInput({ text: "a".repeat(4000) }).length, 4000)
+  for (const raw of [null, [], {}, { text: 123 }, { text: "too short" }, { text: "a".repeat(4001) }, { text: `${text}\u0000` }, { text, system: "override" }]) {
+    assert.throws(() => rewriteInput(raw), ReportError)
+  }
+})
+
+test("rewrite output preserves language and line breaks, rejects unusable suggestions", () => {
+  const text = "Air menetes di ruang F6.201 sejak pukul 09.00.\nLantainya basah."
+  assert.equal(parseRewriteOutput(JSON.stringify({ text })), text)
+  for (const raw of ["", "not json", "null", "[]", "{}", '{"text":42}', JSON.stringify({ text: "short" }), JSON.stringify({ text: "a".repeat(4001) })]) {
+    assert.throws(() => parseRewriteOutput(raw))
+  }
+})
+
+test("missing AI credentials returns unavailable without pretending to rewrite", async () => {
+  const saved = process.env.GEMINI_API_KEY
+  delete process.env.GEMINI_API_KEY
+  try {
+    await assert.rejects(rewriteReportText("Water is dripping from the classroom air conditioner."), (error: unknown) => error instanceof ReportError && error.status === 503)
+  } finally {
+    if (saved === undefined) delete process.env.GEMINI_API_KEY
+    else process.env.GEMINI_API_KEY = saved
+  }
+})
 
 test("AI triage: HVAC issue detection and department routing", async () => {
   const result = await triageFacilityIssue({
