@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -8,6 +8,7 @@ import {
   Bell,
   Building2,
   CalendarDays,
+  Camera,
   CheckCheck,
   CheckCircle2,
   ChevronRight,
@@ -19,6 +20,7 @@ import {
   MapPin,
   MessageSquareText,
   Plus,
+  RefreshCw,
   Search,
   Sparkles,
   Wrench,
@@ -267,11 +269,101 @@ export function NewStudentReport() {
   const router = useRouter()
   const { addReport } = useDemoData()
   const uploadRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const [cameraActive, setCameraActive] = useState(false)
+  const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment")
   const [values, setValues] = useState<ReportFormValues>(initialFormValues)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [image, setImage] = useState<{ src: string; name: string; size: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+    setCameraActive(false)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
+      }
+    }
+  }, [])
+
+  const startCamera = async (facing: "environment" | "user" = cameraFacing) => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      cameraInputRef.current?.click()
+      return
+    }
+
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facing },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      })
+
+      streamRef.current = stream
+      setCameraFacing(facing)
+      setCameraActive(true)
+
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play().catch(() => {})
+        }
+      }, 50)
+    } catch (err) {
+      console.warn("getUserMedia failed, falling back to native camera input:", err)
+      cameraInputRef.current?.click()
+    }
+  }
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return
+    const video = videoRef.current
+    const width = video.videoWidth || 1280
+    const height = video.videoHeight || 720
+
+    const canvas = document.createElement("canvas")
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    if (cameraFacing === "user") {
+      ctx.translate(width, 0)
+      ctx.scale(-1, 1)
+    }
+    ctx.drawImage(video, 0, 0, width, height)
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9)
+    setImage({
+      src: dataUrl,
+      name: `camera-${Date.now()}.jpg`,
+      size: Math.round(dataUrl.length * 0.75),
+    })
+    stopCamera()
+    toast.success("Photo captured!")
+  }
+
+  const switchCamera = () => {
+    const nextFacing = cameraFacing === "environment" ? "user" : "environment"
+    void startCamera(nextFacing)
+  }
 
   const updateValue = <K extends keyof ReportFormValues>(key: K, value: ReportFormValues[K]) => {
     setValues((current) => ({ ...current, [key]: value }))
@@ -397,22 +489,165 @@ export function NewStudentReport() {
               </Field>
             </div>
 
-            <div className="form-section-heading"><ImagePlus aria-hidden="true" />Add a photo <span className="optional-label">Optional</span></div>
-            <div
-              className={`upload-dropzone${dragging ? " upload-dropzone-active" : ""}`}
-              onDragEnter={(event) => { event.preventDefault(); setDragging(true) }}
-              onDragOver={(event) => event.preventDefault()}
-              onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false) }}
-              onDrop={handleDrop}
-            >
-              <div>
-                <span className="upload-icon"><ImagePlus aria-hidden="true" /></span>
-                <strong>Drag a photo here, or browse files</strong>
-                <p>JPG, PNG, or WebP · up to 5 MB</p>
-                <input ref={uploadRef} id="report-image" className="file-input-hidden" type="file" accept="image/*" onChange={handleFileChange} aria-label="Upload an issue photo" />
-                <Button type="button" variant="outline" size="sm" className="upload-browse" onClick={() => uploadRef.current?.click()}>Browse files</Button>
+            <div className="form-section-heading"><Camera aria-hidden="true" />Add a photo <span className="optional-label">Optional</span></div>
+
+            {cameraActive ? (
+              <div
+                style={{
+                  position: "relative",
+                  borderRadius: "12px",
+                  overflow: "hidden",
+                  backgroundColor: "#090d16",
+                  border: "1px solid #334155",
+                  marginBottom: "16px",
+                  boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3)",
+                }}
+              >
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{
+                    width: "100%",
+                    height: "320px",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+
+                {/* Top control bar: Switch camera and close */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "12px",
+                    right: "12px",
+                    display: "flex",
+                    gap: "8px",
+                    zIndex: 20,
+                  }}
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={switchCamera}
+                    title="Switch camera"
+                    style={{
+                      background: "rgba(15, 23, 42, 0.75)",
+                      backdropFilter: "blur(4px)",
+                      color: "#fff",
+                      borderRadius: "8px",
+                      padding: "6px 10px",
+                      fontSize: "0.8rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <RefreshCw style={{ width: "14px", height: "14px" }} />
+                    Flip
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={stopCamera}
+                    title="Close camera"
+                    style={{
+                      background: "rgba(15, 23, 42, 0.75)",
+                      backdropFilter: "blur(4px)",
+                      color: "#fff",
+                      borderRadius: "8px",
+                      padding: "6px 10px",
+                    }}
+                  >
+                    <X style={{ width: "16px", height: "16px" }} />
+                  </Button>
+                </div>
+
+                {/* Bottom shutter bar */}
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "16px",
+                    left: 0,
+                    right: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "8px",
+                    zIndex: 20,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={capturePhoto}
+                    aria-label="Capture photo"
+                    style={{
+                      width: "60px",
+                      height: "60px",
+                      borderRadius: "50%",
+                      backgroundColor: "#ffffff",
+                      border: "4px solid rgba(255, 255, 255, 0.5)",
+                      boxShadow: "0 0 0 2px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.5)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: "44px",
+                        height: "44px",
+                        borderRadius: "50%",
+                        backgroundColor: "#2563eb",
+                        display: "block",
+                      }}
+                    />
+                  </button>
+                  <span
+                    style={{
+                      color: "#e2e8f0",
+                      fontSize: "0.75rem",
+                      textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Tap to capture photo
+                  </span>
+                </div>
               </div>
-            </div>
+            ) : null}
+
+            {!cameraActive ? (
+              <div
+                className={`upload-dropzone${dragging ? " upload-dropzone-active" : ""}`}
+                onDragEnter={(event) => { event.preventDefault(); setDragging(true) }}
+                onDragOver={(event) => event.preventDefault()}
+                onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false) }}
+                onDrop={handleDrop}
+              >
+                <div>
+                  <span className="upload-icon"><Camera aria-hidden="true" /></span>
+                  <strong>Take a picture with your camera, or drag and browse files</strong>
+                  <p>JPG, PNG, or WebP · up to 5 MB</p>
+                  <input ref={uploadRef} id="report-image" className="file-input-hidden" type="file" accept="image/*" onChange={handleFileChange} aria-label="Upload an issue photo" />
+                  <input ref={cameraInputRef} id="report-camera" className="file-input-hidden" type="file" accept="image/*" capture="environment" onChange={handleFileChange} aria-label="Take a photo with camera" />
+                  <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "12px", flexWrap: "wrap" }}>
+                    <Button type="button" variant="default" size="sm" onClick={() => void startCamera()}>
+                      <Camera data-icon="inline-start" aria-hidden="true" />
+                      Take photo
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => uploadRef.current?.click()}>
+                      <ImagePlus data-icon="inline-start" aria-hidden="true" />
+                      Browse files
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {image ? (
               <div className="upload-preview">
                 <img src={image.src} alt={`Preview of ${image.name}`} />
