@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
 import { and, desc, eq, gte, ilike, inArray, or, sql } from "drizzle-orm"
 import {
   db,
@@ -160,13 +162,36 @@ export async function createReport(
     }),
   })
 
-  // Automatic AI triage & analysis
+  // Automatic AI triage & analysis (includes uploaded photo if present)
   try {
+    let triageImage: { base64: string; mimeType: string } | undefined
+    if (input.images && input.images.length > 0) {
+      const firstImg = input.images[0]
+      if (firstImg.fileUrl.startsWith("data:")) {
+        triageImage = {
+          base64: firstImg.fileUrl,
+          mimeType: firstImg.mimeType || "image/jpeg",
+        }
+      } else {
+        try {
+          const diskPath = join(process.cwd(), "public", "uploads", firstImg.storageKey)
+          const fileBuf = await readFile(diskPath)
+          triageImage = {
+            base64: `data:${firstImg.mimeType || "image/jpeg"};base64,${fileBuf.toString("base64")}`,
+            mimeType: firstImg.mimeType || "image/jpeg",
+          }
+        } catch {
+          // Continue without image if reading from disk fails
+        }
+      }
+    }
+
     const triage = await triageFacilityIssue({
       title: input.title,
       description: input.description,
       building: building.name,
       room: locationSummary(input),
+      image: triageImage,
     })
     await saveAiAnalysis(newReport.id, triage)
   } catch (err) {

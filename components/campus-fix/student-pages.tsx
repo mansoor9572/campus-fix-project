@@ -271,24 +271,11 @@ export function NewStudentReport() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [image, setImage] = useState<{ src: string; name: string; size: number } | null>(null)
   const [dragging, setDragging] = useState(false)
-  const [analyzed, setAnalyzed] = useState(false)
-  const [analyzing, setAnalyzing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [aiResult, setAiResult] = useState<{
-    problemSummary: string
-    detectedObject: string
-    suggestedCategory: string
-    suggestedPriority: string
-    recommendedDepartment: string
-    confidence: number
-    aiProvider: string
-    modelName: string
-  } | null>(null)
 
   const updateValue = <K extends keyof ReportFormValues>(key: K, value: ReportFormValues[K]) => {
     setValues((current) => ({ ...current, [key]: value }))
     setErrors((current) => ({ ...current, [key]: "" }))
-    setAnalyzed(false)
   }
 
   const selectImage = async (file?: File) => {
@@ -318,55 +305,6 @@ export function NewStudentReport() {
     event.preventDefault()
     setDragging(false)
     void selectImage(event.dataTransfer.files?.[0])
-  }
-
-  const analyze = async () => {
-    if (!values.description.trim()) {
-      toast.info("Describe the issue before running AI triage.")
-      return
-    }
-    setAnalyzing(true)
-    try {
-      const res = await fetch("/api/reports/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: titleFromDescription(values.description),
-          description: values.description,
-          building: values.building,
-          room: locationSummary(values),
-          image: image ? { base64: image.src, mimeType: "image/jpeg" } : undefined,
-        }),
-      })
-
-      if (!res.ok) throw new Error("AI analysis request failed.")
-      const data = await res.json()
-      if (data.triage) {
-        const triage = data.triage
-        const prioMap: Record<string, Priority> = {
-          low: "Low",
-          medium: "Medium",
-          high: "High",
-        }
-        setValues((current) => ({
-          ...current,
-          priority: prioMap[triage.suggestedPriority] || current.priority,
-          category: (triage.suggestedCategory as ReportCategory) || current.category,
-        }))
-        setAiResult(triage)
-        setAnalyzed(true)
-        toast.success(`AI Triage: Suggested ${triage.suggestedCategory} (${triage.suggestedPriority} priority) with ${Math.round(triage.confidence * 100)}% confidence.`)
-      }
-    } catch {
-      // Graceful fallback to client calculation
-      if (values.category) {
-        setValues((current) => ({ ...current, priority: suggestedPriority(current.category as ReportCategory) }))
-      }
-      setAnalyzed(true)
-      toast.info("Triage complete. You can adjust the suggested priority.")
-    } finally {
-      setAnalyzing(false)
-    }
   }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -427,7 +365,11 @@ export function NewStudentReport() {
 
               <Field data-invalid={Boolean(errors.category)}>
                 <FieldLabel htmlFor="report-category">Category <span aria-hidden="true">*</span></FieldLabel>
-                <select id="report-category" className="form-select" value={values.category} onChange={(event) => updateValue("category", event.target.value as ReportCategory | "")} aria-invalid={Boolean(errors.category)}>
+                <select id="report-category" className="form-select" value={values.category} onChange={(event) => {
+                  const cat = event.target.value as ReportCategory | ""
+                  updateValue("category", cat)
+                  if (cat) updateValue("priority", suggestedPriority(cat))
+                }} aria-invalid={Boolean(errors.category)}>
                   <option value="">Select a category</option>
                   {CATEGORY_OPTIONS.map((category) => <option key={category} value={category}>{category}</option>)}
                 </select>
@@ -480,52 +422,6 @@ export function NewStudentReport() {
                 </div>
               </div>
             ) : null}
-
-            <div className="form-section-heading"><Sparkles aria-hidden="true" />AI Priority & Triage</div>
-            <div className="priority-control-row">
-              <div className="priority-control-copy">
-                <span className="priority-control-label">Suggested priority</span>
-                {analyzed ? <PriorityBadge priority={values.priority} /> : <span className="unanalysed-label">Run AI triage to analyze your report and photo.</span>}
-              </div>
-              <div className="priority-control-actions">
-                <select aria-label="Set report priority" className="form-select priority-select" value={values.priority} onChange={(event) => updateValue("priority", event.target.value as Priority)}>
-                  {(["Low", "Medium", "High", "Urgent"] as Priority[]).map((priority) => <option key={priority} value={priority}>{priority}</option>)}
-                </select>
-                <Button type="button" variant="outline" size="sm" onClick={analyze} disabled={analyzing}>
-                  {analyzing ? <LoaderCircle className="spin-icon" aria-hidden="true" /> : <Sparkles data-icon="inline-start" aria-hidden="true" />}
-                  {analyzing ? "Analyzing with Gemini..." : "Analyze issue"}
-                </Button>
-              </div>
-            </div>
-            {aiResult ? (
-              <div className="ai-insight" style={{ borderColor: "rgba(37, 99, 235, 0.3)", backgroundColor: "rgba(239, 246, 255, 0.6)", padding: "12px", borderRadius: "8px" }}>
-                <span className="ai-insight-icon" style={{ color: "#2563eb" }}><Sparkles aria-hidden="true" /></span>
-                <div className="ai-insight-copy" style={{ width: "100%" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <strong>{aiResult.aiProvider} ({aiResult.modelName})</strong>
-                    <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#1d4ed8", background: "#dbeafe", padding: "2px 8px", borderRadius: "9999px" }}>
-                      {Math.round(aiResult.confidence * 100)}% confidence
-                    </span>
-                  </div>
-                  <p style={{ marginTop: "4px", fontSize: "0.875rem" }}>
-                    Detected <strong>{aiResult.detectedObject}</strong>. Suggested category: <strong>{aiResult.suggestedCategory}</strong> &bull; Recommended team: <strong>{aiResult.recommendedDepartment}</strong>.
-                  </p>
-                  {aiResult.problemSummary ? (
-                    <p style={{ marginTop: "4px", fontStyle: "italic", fontSize: "0.85rem", color: "#4b5563" }}>
-                      &ldquo;{aiResult.problemSummary}&rdquo;
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div className="ai-insight">
-                <span className="ai-insight-icon"><Info aria-hidden="true" /></span>
-                <div className="ai-insight-copy">
-                  <strong>AI Facility Triage</strong>
-                  <p>Click &ldquo;Analyze issue&rdquo; to have Google Gemini evaluate your report and photo to automatically suggest the category, priority, and maintenance department.</p>
-                </div>
-              </div>
-            )}
 
             <div className="form-actions">
               <span className="required-note">* Required fields</span>
@@ -593,15 +489,7 @@ export function StudentReportDetails({ reportId }: { reportId: string }) {
                 <div><span className="report-detail-label">Reported by</span><span className="report-detail-value">{report.reporterName}</span></div>
                 <div><span className="report-detail-label">Assigned to</span><span className="report-detail-value">{report.assignedTo ?? "Not assigned yet"}</span></div>
               </div>
-              {report.aiAnalysis ? (
-                <div style={{ marginTop: "16px", padding: "10px 14px", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", fontSize: "0.85rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <Sparkles style={{ width: "16px", height: "16px", color: "#16a34a" }} aria-hidden="true" />
-                    <span><strong>AI Triage:</strong> Identified as <em>{report.aiAnalysis.detectedObject}</em> ({report.aiAnalysis.suggestedCategory})</span>
-                  </div>
-                  <span style={{ fontSize: "0.75rem", color: "#15803d", fontWeight: 600 }}>{Math.round(report.aiAnalysis.confidence * 100)}% confidence</span>
-                </div>
-              ) : null}
+              
             </CardContent>
           </Card>
           <PortalCard title="Progress timeline" description="Updates from your report and the campus team." className="timeline-card">
