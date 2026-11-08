@@ -62,6 +62,7 @@ function getNavigation(role: Role): NavigationItem[] {
     return [
       { label: "Overview", href: "/admin/dashboard", icon: LayoutDashboard },
       { label: "All reports", href: "/admin/reports", icon: ClipboardCheck },
+      { label: "Building directory", href: "/admin/buildings", icon: LayoutDashboard },
       { label: "Notifications", href: "/notifications", icon: Bell },
     ]
   }

@@ -13,12 +13,14 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
+    "db:seed:umy": "tsx scripts/seed-umy-buildings.ts",
     "lint": "eslint .",
-    "test": "tsx --test tests/auth.unit.test.ts tests/reports.unit.test.ts tests/ai.unit.test.ts tests/uploads.unit.test.ts",
-    "test:reports": "tsx --test tests/reports.integration.test.ts",
+    "test": "tsx --test tests/auth.unit.test.ts tests/reports.unit.test.ts tests/ai.unit.test.ts tests/uploads.unit.test.ts tests/buildings.unit.test.ts",
+    "test:reports": "tsx scripts/test-reports.ts",
     "test:auth": "playwright test",
     "auth:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
-    "auth:cleanup": "tsx scripts/cleanup-auth.ts"
+    "auth:cleanup": "tsx scripts/cleanup-auth.ts",
+    "test:location-ui": "playwright test -c playwright.location.config.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

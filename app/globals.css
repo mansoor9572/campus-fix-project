@@ -490,6 +490,27 @@ img { display: block; max-width: 100%; }
 .form-card textarea.form-control { min-height: 116px; padding-top: 10px; resize: vertical; }
 .form-two-column { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
 .form-span-2 { grid-column: span 2; }
+.building-selector { position: relative; min-width: 0; }
+.building-search-input { display: flex; align-items: center; gap: 8px; }
+.building-search-input > svg { width: 18px; flex: 0 0 18px; color: #758397; }
+.building-search-input input { min-width: 0; flex: 1; }
+.building-results { position: absolute; z-index: 30; left: 0; right: 0; top: 48px; max-height: 280px; overflow-y: auto; list-style: none; margin: 0; padding: 5px; border: 1px solid #dce4ed; border-radius: 10px; background: white; box-shadow: 0 8px 28px #17335020; }
+.building-results li { padding: 10px; border-radius: 6px; cursor: pointer; overflow-wrap: anywhere; }
+.building-results li:hover, .building-result-active { background: #edf4fc; }
+.building-results strong, .building-results li > span, .selected-building > * { display: block; }
+.building-results li > span, .selected-building, .building-load-error { font-size: 12px; color: #64748b; }
+.building-code { display: inline-block; padding: 2px 6px; background: #eaf1fa; border-radius: 5px; font-size: 12px; color: #214568; }
+.selected-building { display: grid; gap: 5px; margin-top: 10px; padding: 12px; background: #f6f8fb; border-radius: 8px; overflow-wrap: anywhere; }
+.selected-building a { color: #245d9e; text-decoration: underline; }
+.building-load-error { margin-top: 8px; }
+.directory-edit-form { display: grid; gap: 16px; }
+.directory-edit-form label { display: grid; gap: 6px; font-size: 13px; }
+.directory-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.directory-entries article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; border-bottom: 1px solid #e2e8f0; }
+.directory-entries article > div { min-width: 0; overflow-wrap: anywhere; }
+.directory-entries p, .directory-status { font-size: 12px; color: #64748b; }
+.directory-status { text-transform: capitalize; }
+.report-subline, .report-detail-meta span, .report-detail-value, .detail-location-card span { overflow-wrap: anywhere; white-space: normal; }
 .form-section-heading { display: flex; align-items: center; gap: 8px; margin: 20px 0 12px; color: #3b536d; font-size: 11px; font-weight: 700; }
 .form-section-heading svg { width: 15px; height: 15px; color: #6283a0; }
 .form-help { margin: 5px 0 0; color: #8794a2; font-size: 9px; line-height: 1.55; }

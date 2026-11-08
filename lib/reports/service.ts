@@ -14,6 +14,7 @@ import {
   aiAnalyses,
   type UserRole,
 } from "@/lib/db"
+import { locationSummary } from "./location"
 import { triageFacilityIssue } from "@/lib/ai/gemini"
 import { saveAiAnalysis, getAiAnalysis } from "@/lib/ai/service"
 import { canAccessReport, priorityLabels, statusLabels, transitions } from "./policy"
@@ -99,7 +100,10 @@ export async function createReport(
       title: input.title,
       description: input.description,
       buildingId: input.buildingId,
-      room: input.room,
+      room: input.roomNumber,
+      floor: input.floor,
+      roomNumber: input.roomNumber,
+      additionalDetails: input.additionalDetails || null,
       categoryId: input.categoryId,
       departmentId,
       priority: input.priority,
@@ -162,7 +166,7 @@ export async function createReport(
       title: input.title,
       description: input.description,
       building: building.name,
-      room: input.room,
+      room: locationSummary(input),
     })
     await saveAiAnalysis(newReport.id, triage)
   } catch (err) {
@@ -218,6 +222,9 @@ export async function listReports(
         ilike(reports.title, pattern),
         ilike(reports.description, pattern),
         ilike(reports.room, pattern),
+        ilike(reports.floor, pattern),
+        ilike(reports.roomNumber, pattern),
+        ilike(reports.additionalDetails, pattern),
         ilike(users.name, pattern)
       )
     )
@@ -255,6 +262,9 @@ export async function listReports(
       title: reports.title,
       description: reports.description,
       room: reports.room,
+      floor: reports.floor,
+      roomNumber: reports.roomNumber,
+      additionalDetails: reports.additionalDetails,
       priority: reports.priority,
       status: reports.status,
       createdAt: reports.createdAt,
@@ -381,6 +391,10 @@ export async function listReports(
     category: r.categoryName ?? "Other",
     building: r.buildingName ?? "Unknown Building",
     room: r.room ?? "",
+    buildingId: r.buildingId,
+    floor: r.floor,
+    roomNumber: r.roomNumber,
+    additionalDetails: r.additionalDetails,
     status: statusLabels[r.status],
     priority: priorityLabels[r.priority],
     reporterName: r.reporterName ?? "Campus User",
@@ -423,6 +437,9 @@ export async function getReportById(
       title: reports.title,
       description: reports.description,
       room: reports.room,
+      floor: reports.floor,
+      roomNumber: reports.roomNumber,
+      additionalDetails: reports.additionalDetails,
       priority: reports.priority,
       status: reports.status,
       createdAt: reports.createdAt,
@@ -544,6 +561,9 @@ export async function getReportById(
     building: row.buildingName ?? "Unknown Building",
     buildingId: row.buildingId,
     room: row.room ?? "",
+    floor: row.floor,
+    roomNumber: row.roomNumber,
+    additionalDetails: row.additionalDetails,
     status: statusLabels[row.status],
     priority: priorityLabels[row.priority],
     reporterName: row.reporterName ?? "Campus User",
@@ -658,7 +678,13 @@ export async function updateReport(
 
   if (patch.title !== undefined) updateValues.title = patch.title
   if (patch.description !== undefined) updateValues.description = patch.description
-  if (patch.room !== undefined) updateValues.room = patch.room
+  if (patch.room !== undefined) {
+    if (current.roomNumber || current.floor) throw new ReportError("Use the separate floor and room number fields.");
+    updateValues.room = patch.room
+  }
+  if (patch.floor !== undefined) updateValues.floor = patch.floor
+  if (patch.roomNumber !== undefined) { updateValues.roomNumber = patch.roomNumber; updateValues.room = patch.roomNumber }
+  if (patch.additionalDetails !== undefined) updateValues.additionalDetails = patch.additionalDetails || null
   if (patch.buildingId !== undefined) updateValues.buildingId = patch.buildingId
   if (patch.categoryId !== undefined) updateValues.categoryId = patch.categoryId
   if (patch.priority !== undefined) updateValues.priority = patch.priority

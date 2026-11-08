@@ -39,6 +39,7 @@
   ],
   "exclude": [
     "node_modules",
+    "tests/fixtures/location/.next",
     ".next-auth-tests"
   ]
 }

@@ -15,7 +15,6 @@ import {
   type ReportCategory,
   type ReportStatus,
   type Role,
-  type ReportUpdate,
 } from "@/lib/campus-fix/data"
 import { toast } from "sonner"
 
@@ -24,7 +23,10 @@ export type NewReportInput = {
   description: string
   category: ReportCategory
   building: string
-  room: string
+  buildingId: string
+  floor: string
+  roomNumber: string
+  additionalDetails: string
   priority: Priority
   images: string[]
 }
@@ -45,7 +47,7 @@ type Preferences = {
 }
 
 type ReferenceData = {
-  buildings: Array<{ id: string; name: string; code: string }>
+  buildings: Array<{ id: string; name: string; code: string | null }>
   categories: Array<{ id: string; name: string; defaultDepartmentId?: string | null }>
   departments: Array<{ id: string; name: string }>
   staff: Array<{ id: string; name: string; email: string }>
@@ -75,7 +77,7 @@ type DemoDataContextValue = {
   stats: DashboardStats | null
   setSearchTerm: (value: string) => void
   fetchStats: (days?: string) => Promise<DashboardStats | null>
-  addReport: (input: NewReportInput) => string
+  addReport: (input: NewReportInput) => Promise<string>
   changeReport: (id: string, patch: ReportPatch, actor?: string) => void
   addReportUpdate: (id: string, message: string, actor: string, title?: string) => void
   markNotificationRead: (id: string) => void
@@ -116,7 +118,6 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
       }
     : demoProfiles
 
-  const [nextReportNumber, setNextReportNumber] = useState(1049)
   const [searchTerm, setSearchTerm] = useState("")
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [preferences, setPreferences] = useState<Preferences>({
@@ -172,9 +173,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
       .then((data) => {
         if (isMounted && data?.reports) {
           // If the database has real reports, display them
-          if (data.reports.length > 0) {
-            setReports(data.reports)
-          }
+          setReports(data.reports)
         }
       })
       .catch((err) => console.error("Failed to load reports:", err))
@@ -194,142 +193,42 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
     }
   }, [status, session?.user])
 
-  const addReport = (input: NewReportInput) => {
-    const id = `RPT-${nextReportNumber}`
-    const createdAt = new Date().toISOString()
-    const student = profiles.student
-    const firstUpdate: ReportUpdate = {
-      id: `${id}-update-1`,
-      createdAt,
-      actor: student.name,
-      title: "Report submitted",
-      message: "Your report was received by Campus Operations.",
+  const addReport = async (input: NewReportInput): Promise<string> => {
+    if (!session?.user) throw new Error("Sign in before submitting a report.")
+    let references = refData
+    if (!references.categories.length) {
+      const response = await fetch("/api/reference-data")
+      if (!response.ok) throw new Error("Unable to load report categories. Please try again.")
+      references = await response.json() as ReferenceData
+      setRefData(references)
     }
-    const report: CampusReport = {
-      ...input,
-      id,
-      reporterName: student.name,
-      reporterEmail: student.email,
-      reporterProgram: student.department,
-      assignedTo: null,
-      status: "Submitted",
-      createdAt,
-      updatedAt: createdAt,
-      version: createdAt,
-      updates: [firstUpdate],
+    const category = references.categories.find(c => c.name.toLowerCase() === input.category.toLowerCase())
+    if (!category) throw new Error("This category is unavailable. Please choose another category.")
+    const uploadedImages = []
+    for (const imgSrc of input.images) {
+      if (!imgSrc.startsWith("data:")) continue
+      const blob = await (await fetch(imgSrc)).blob()
+      const form = new FormData()
+      form.append("file", blob, "photo.jpg")
+      const response = await fetch("/api/uploads", { method: "POST", body: form })
+      if (!response.ok) throw new Error("Your photo could not be uploaded. Please try again.")
+      uploadedImages.push(await response.json())
     }
-
-    // Optimistic UI update
-    setReports((current) => [report, ...current])
-    setNextReportNumber((current) => current + 1)
-    setNotifications((current) => [
-      {
-        id: `${id}-notification`,
-        title: "Your report was submitted",
-        message: `${id} is now in the Campus Operations review queue.`,
-        createdAt,
-        read: false,
-        reportId: id,
-        type: "status",
-      },
-      ...current,
-    ])
-
-    // If authenticated, persist to real database
-    if (session?.user) {
-      // Find building ID by name
-      const buildingObj = refData.buildings.find(
-        (b) => b.name.toLowerCase() === input.building.toLowerCase()
-      )
-      // Find category ID by name
-      const categoryObj = refData.categories.find(
-        (c) => c.name.toLowerCase() === input.category.toLowerCase()
-      )
-
-      const apiPriority =
-        input.priority === "Urgent" || input.priority === "High"
-          ? "high"
-          : input.priority === "Low"
-            ? "low"
-            : "medium"
-
-      if (buildingObj && categoryObj) {
-        // Upload images first, then create report with image references
-        ;(async () => {
-          try {
-            const uploadedImages: Array<{
-              storageKey: string
-              fileUrl: string
-              originalFilename: string
-              mimeType: string
-              fileSize: number
-            }> = []
-
-            // Upload each base64 image via /api/uploads
-            for (const imgSrc of input.images) {
-              if (imgSrc.startsWith("data:")) {
-                // Convert base64 data URL to a File object
-                const res = await fetch(imgSrc)
-                const blob = await res.blob()
-                const formData = new FormData()
-                formData.append("file", blob, "photo.jpg")
-
-                const uploadRes = await fetch("/api/uploads", {
-                  method: "POST",
-                  body: formData,
-                })
-                if (uploadRes.ok) {
-                  const uploadData = await uploadRes.json()
-                  uploadedImages.push({
-                    storageKey: uploadData.storageKey,
-                    fileUrl: uploadData.fileUrl,
-                    originalFilename: uploadData.originalFilename,
-                    mimeType: uploadData.mimeType,
-                    fileSize: uploadData.fileSize,
-                  })
-                }
-              }
-            }
-
-            const apiRes = await fetch("/api/reports", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                title: input.title,
-                description: input.description,
-                buildingId: buildingObj.id,
-                categoryId: categoryObj.id,
-                room: input.room,
-                priority: apiPriority,
-                images: uploadedImages,
-              }),
-            })
-
-            if (!apiRes.ok) {
-              const data = await apiRes.json().catch(() => ({}))
-              throw new Error(data.message || "Failed to submit report.")
-            }
-            const serverReport = await apiRes.json()
-            // Replace optimistic report with real database record
-            // Use persistent image URLs from server instead of base64
-            setReports((current) =>
-              current.map((r) =>
-                r.id === id
-                  ? { ...serverReport, images: serverReport.images?.length ? serverReport.images : input.images }
-                  : r
-              )
-            )
-            void fetchStats()
-          } catch (err) {
-            const error = err instanceof Error ? err : new Error("Unknown error")
-            console.error("Report submit error:", error)
-            toast.error(error.message || "Failed to save report to server.")
-          }
-        })()
-      }
-    }
-
-    return id
+    const response = await fetch("/api/reports", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: input.title, description: input.description,
+        buildingId: input.buildingId, categoryId: category.id, floor: input.floor,
+        roomNumber: input.roomNumber, additionalDetails: input.additionalDetails,
+        priority: input.priority === "Urgent" || input.priority === "High" ? "high" : input.priority.toLowerCase(),
+        images: uploadedImages }),
+    })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.message || "Failed to save report. Please try again.")
+    setReports(current => [result, ...current])
+    void fetch("/api/notifications").then(response => response.ok ? response.json() : null)
+      .then(data => { if (Array.isArray(data)) setNotifications(data) }).catch(() => {})
+    void fetchStats()
+    return result.id
   }
 
   const changeReport = (id: string, patch: ReportPatch, actor = "Campus Operations") => {

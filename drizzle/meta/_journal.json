@@ -15,6 +15,13 @@
       "when": 1793266224434,
       "tag": "0001_careful_gunslinger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794045666043,
+      "tag": "0002_umy_directory_report_location",
+      "breakpoints": true
     }
   ]
 }

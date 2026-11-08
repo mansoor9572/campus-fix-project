@@ -19,6 +19,10 @@ export type CampusReport = {
   category: ReportCategory
   building: string
   room: string
+  buildingId?: string
+  floor?: string | null
+  roomNumber?: string | null
+  additionalDetails?: string | null
   status: ReportStatus
   priority: Priority
   reporterName: string

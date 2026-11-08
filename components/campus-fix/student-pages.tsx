@@ -31,6 +31,8 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useDemoData } from "@/components/campus-fix/demo-provider"
+import { BuildingSelector } from "./building-selector"
+import { LOCATION_LIMITS, locationSummary } from "@/lib/reports/location"
 import {
   DemoBanner,
   EmptyState,
@@ -46,7 +48,6 @@ import {
   formatDateTime,
 } from "@/components/campus-fix/shared"
 import {
-  BUILDING_OPTIONS,
   CATEGORY_OPTIONS,
   type CampusNotification,
   type CampusReport,
@@ -177,7 +178,7 @@ export function StudentReports() {
     return myReports.filter((report) => {
       const matchesStatus = status === "All statuses" || report.status === status
       const matchesPriority = priority === "All priorities" || report.priority === priority
-      const matchesText = !normalized || `${report.id} ${report.title} ${report.building} ${report.room} ${report.category}`.toLowerCase().includes(normalized)
+      const matchesText = !normalized || `${report.id} ${report.title} ${report.building} ${locationSummary(report)} ${report.category}`.toLowerCase().includes(normalized)
       return matchesStatus && matchesPriority && matchesText
     })
   }, [myReports, query, status, priority])
@@ -229,7 +230,10 @@ type ReportFormValues = {
   title: string
   category: ReportCategory | ""
   building: string
-  room: string
+  buildingId: string
+  floor: string
+  roomNumber: string
+  additionalDetails: string
   description: string
   priority: Priority
 }
@@ -238,7 +242,10 @@ const initialFormValues: ReportFormValues = {
   title: "",
   category: "",
   building: "",
-  room: "",
+  buildingId: "",
+  floor: "",
+  roomNumber: "",
+  additionalDetails: "",
   description: "",
   priority: "Medium",
 }
@@ -329,7 +336,7 @@ export function NewStudentReport() {
           title: values.title || "Facility issue",
           description: values.description || values.title,
           building: values.building,
-          room: values.room,
+          room: locationSummary(values),
           image: image ? { base64: image.src, mimeType: "image/jpeg" } : undefined,
         }),
       })
@@ -364,13 +371,16 @@ export function NewStudentReport() {
     }
   }
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (submitting) return
     const nextErrors: Record<string, string> = {}
     if (values.title.trim().length < 8) nextErrors.title = "Use at least 8 characters to describe the issue."
     if (!values.category) nextErrors.category = "Choose a category."
-    if (!values.building) nextErrors.building = "Choose a building."
-    if (values.room.trim().length < 2) nextErrors.room = "Add a room or nearby location."
+    if (!values.buildingId) nextErrors.building = "Search and select a building from the directory."
+    if (!values.floor.trim() || values.floor.trim().length > LOCATION_LIMITS.floor) nextErrors.floor = "Enter a floor number or name (up to 60 characters)."
+    if (!values.roomNumber.trim() || values.roomNumber.trim().length > LOCATION_LIMITS.roomNumber) nextErrors.roomNumber = "Enter a room number or name (up to 100 characters)."
+    if (values.additionalDetails.trim().length > LOCATION_LIMITS.additionalDetails) nextErrors.additionalDetails = "Use at most 500 characters."
     if (values.description.trim().length < 20) nextErrors.description = "Add a little more detail (at least 20 characters)."
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length) {
@@ -379,17 +389,26 @@ export function NewStudentReport() {
     }
 
     setSubmitting(true)
-    const id = addReport({
-      title: values.title.trim(),
-      category: values.category as ReportCategory,
-      building: values.building,
-      room: values.room.trim(),
-      description: values.description.trim(),
-      priority: values.priority,
-      images: image ? [image.src] : [],
-    })
-    toast.success(`${id} was submitted to Campus Operations.`)
-    router.push("/student/reports")
+    try {
+      const id = await addReport({
+        title: values.title.trim(),
+        category: values.category as ReportCategory,
+        building: values.building,
+        buildingId: values.buildingId,
+        floor: values.floor.trim(),
+        roomNumber: values.roomNumber.trim(),
+        additionalDetails: values.additionalDetails.trim(),
+        description: values.description.trim(),
+        priority: values.priority,
+        images: image ? [image.src] : [],
+      })
+      toast.success(`${id} was submitted to Campus Operations.`)
+      router.push("/student/reports")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save your report. Please try again."
+      setErrors(current => ({ ...current, submit: message }))
+      toast.error(message)
+    } finally { setSubmitting(false) }
   }
 
   return (
@@ -400,7 +419,6 @@ export function NewStudentReport() {
         description="Share a few details so the right team can take a look."
         actions={<Link className="button-link button-link-secondary" href="/student/reports">Cancel</Link>}
       />
-      <DemoBanner>Reports, uploaded photos, and status changes are session-only demo data.</DemoBanner>
       <Card className="portal-card form-card">
         <CardHeader className="portal-card-header">
           <div><CardTitle>Issue details</CardTitle><p>Fields marked with an asterisk are required.</p></div>
@@ -408,6 +426,7 @@ export function NewStudentReport() {
         </CardHeader>
         <CardContent className="portal-card-content">
           <form onSubmit={submit} noValidate>
+            {errors.submit && <p className="auth-error" role="alert">{errors.submit}</p>}
             <div className="form-two-column">
               <Field data-invalid={Boolean(errors.title)} className="form-span-2">
                 <FieldLabel htmlFor="report-title">What needs attention? <span aria-hidden="true">*</span></FieldLabel>
@@ -424,19 +443,29 @@ export function NewStudentReport() {
                 {errors.category ? <FieldError>{errors.category}</FieldError> : <FieldDescription>Choose the area that best describes the issue.</FieldDescription>}
               </Field>
 
-              <Field data-invalid={Boolean(errors.building)}>
+              <Field data-invalid={Boolean(errors.building)} className="form-span-2">
                 <FieldLabel htmlFor="report-building">Building <span aria-hidden="true">*</span></FieldLabel>
-                <select id="report-building" className="form-select" value={values.building} onChange={(event) => updateValue("building", event.target.value)} aria-invalid={Boolean(errors.building)}>
-                  <option value="">Choose a building</option>
-                  {BUILDING_OPTIONS.map((building) => <option key={building} value={building}>{building}</option>)}
-                </select>
-                {errors.building ? <FieldError>{errors.building}</FieldError> : <FieldDescription>Pick the closest campus building.</FieldDescription>}
+                <BuildingSelector id="report-building" value={values.buildingId} invalid={Boolean(errors.building)} onChange={building => {
+                  setValues(current => ({ ...current, buildingId: building?.id || "", building: building?.name || "" }))
+                  setErrors(current => ({ ...current, building: "" }))
+                }} />
+                {errors.building ? <FieldError>{errors.building}</FieldError> : <FieldDescription>Search by name, code (such as F6), or faculty in English or Indonesian.</FieldDescription>}
               </Field>
 
-              <Field data-invalid={Boolean(errors.room)}>
-                <FieldLabel htmlFor="report-room">Room or nearby location <span aria-hidden="true">*</span></FieldLabel>
-                <Input id="report-room" className="form-control" value={values.room} onChange={(event) => updateValue("room", event.target.value)} placeholder="Room number, floor, or landmark" aria-invalid={Boolean(errors.room)} maxLength={100} />
-                {errors.room ? <FieldError>{errors.room}</FieldError> : <FieldDescription>For example, “A101” or “east stairwell, 2nd floor.”</FieldDescription>}
+              <Field data-invalid={Boolean(errors.floor)}>
+                <FieldLabel htmlFor="report-floor">Floor <span aria-hidden="true">*</span></FieldLabel>
+                <Input id="report-floor" type="text" className="form-control" value={values.floor} onChange={event => updateValue("floor", event.target.value)} placeholder="e.g. 2nd Floor, Ground Floor, Basement" required aria-invalid={Boolean(errors.floor)} maxLength={LOCATION_LIMITS.floor} />
+                {errors.floor ? <FieldError>{errors.floor}</FieldError> : <FieldDescription>Type the floor number or name.</FieldDescription>}
+              </Field>
+              <Field data-invalid={Boolean(errors.roomNumber)}>
+                <FieldLabel htmlFor="report-room">Room Number <span aria-hidden="true">*</span></FieldLabel>
+                <Input id="report-room" type="text" className="form-control" value={values.roomNumber} onChange={event => updateValue("roomNumber", event.target.value)} placeholder="e.g. F6.201, Room 205, Laboratory 3" required aria-invalid={Boolean(errors.roomNumber)} maxLength={LOCATION_LIMITS.roomNumber} />
+                {errors.roomNumber ? <FieldError>{errors.roomNumber}</FieldError> : <FieldDescription>Type the room number or name.</FieldDescription>}
+              </Field>
+              <Field data-invalid={Boolean(errors.additionalDetails)} className="form-span-2">
+                <FieldLabel htmlFor="report-additional-details">Additional Details <span className="optional-label">Optional</span></FieldLabel>
+                <Textarea id="report-additional-details" className="form-control" value={values.additionalDetails} onChange={event => updateValue("additionalDetails", event.target.value)} placeholder="e.g. Near the elevator, beside the main entrance" rows={3} maxLength={LOCATION_LIMITS.additionalDetails} aria-invalid={Boolean(errors.additionalDetails)} />
+                {errors.additionalDetails ? <FieldError>{errors.additionalDetails}</FieldError> : <FieldDescription>{values.additionalDetails.length}/{LOCATION_LIMITS.additionalDetails} characters</FieldDescription>}
               </Field>
 
               <Field data-invalid={Boolean(errors.description)} className="form-span-2">
@@ -568,7 +597,7 @@ export function StudentReportDetails({ reportId }: { reportId: string }) {
                 <h2 className="report-detail-title">{report.title}</h2>
                 <div className="report-detail-meta">
                   <span><CalendarDays aria-hidden="true" />Submitted {formatDate(report.createdAt)}</span>
-                  <span><MapPin aria-hidden="true" />{report.building} · {report.room}</span>
+                  <span><MapPin aria-hidden="true" />{report.building} · {locationSummary(report)}</span>
                   <span><Wrench aria-hidden="true" />{report.category}</span>
                 </div>
               </div>
@@ -629,7 +658,7 @@ export function StudentReportDetails({ reportId }: { reportId: string }) {
           <PortalCard title="Location" description="Where the issue was reported." className="detail-location-card">
             <div className="location-card-icon"><Building2 aria-hidden="true" /></div>
             <strong>{report.building}</strong>
-            <span>{report.room}</span>
+            <span>{locationSummary(report)}</span>
             <span className="location-category"><MapPin aria-hidden="true" />{report.category}</span>
           </PortalCard>
         </div>

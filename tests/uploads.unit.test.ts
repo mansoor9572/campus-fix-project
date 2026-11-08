@@ -43,7 +43,9 @@ describe("Report image input validation", () => {
       description: "The third-floor window is cracked and letting cold air in.",
       buildingId: "00000000-0000-1000-8000-000000000001",
       categoryId: "00000000-0000-1000-8000-000000000002",
-      room: "Room 301",
+      floor: "2nd Floor",
+      roomNumber: "Room 301",
+      additionalDetails: "Near the elevator",
       priority: "high",
       images: [
         {
@@ -67,7 +69,9 @@ describe("Report image input validation", () => {
       description: "The third-floor window is cracked and letting cold air in.",
       buildingId: "00000000-0000-1000-8000-000000000001",
       categoryId: "00000000-0000-1000-8000-000000000002",
-      room: "Room 301",
+      floor: "2nd Floor",
+      roomNumber: "Room 301",
+      additionalDetails: "Near the elevator",
     })
     assert.equal(result.images.length, 0)
   })
@@ -84,7 +88,9 @@ describe("Report image input validation", () => {
         description: "Testing the 10-image limit enforcement here.",
         buildingId: "00000000-0000-1000-8000-000000000001",
         categoryId: "00000000-0000-1000-8000-000000000002",
-        room: "Room 101",
+        floor: "2nd Floor",
+        roomNumber: "Room 101",
+        additionalDetails: "Near the elevator",
         images: tooManyImages,
       })
     }, /at most 10/)
@@ -98,7 +104,9 @@ describe("Report image input validation", () => {
         description: "Testing validation for image entries here.",
         buildingId: "00000000-0000-1000-8000-000000000001",
         categoryId: "00000000-0000-1000-8000-000000000002",
-        room: "Room 101",
+        floor: "2nd Floor",
+        roomNumber: "Room 101",
+        additionalDetails: "Near the elevator",
         images: [{ fileUrl: "/uploads/x.jpg" }],
       })
     }, /storageKey/)

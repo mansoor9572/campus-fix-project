@@ -18,7 +18,9 @@ test("report creation validation: valid inputs and defaults", () => {
     description: "Water is dripping from the AC unit onto the lecture hall floor.",
     buildingId: validUuid,
     categoryId: validUuid2,
-    room: "Room 101",
+    floor: "2nd Floor",
+    roomNumber: "Room 101",
+    additionalDetails: "Near the elevator",
     priority: "High",
   }
   const result = createInput(raw)
@@ -26,7 +28,7 @@ test("report creation validation: valid inputs and defaults", () => {
   assert.equal(result.priority, "high")
   assert.equal(result.buildingId, validUuid)
   assert.equal(result.categoryId, validUuid2)
-  assert.equal(result.room, "Room 101")
+  assert.equal(result.roomNumber, "Room 101")
 
   // Default priority is medium if omitted
   const noPriority = createInput({ ...raw, priority: undefined })
@@ -39,7 +41,9 @@ test("report creation validation: rejects invalid or dangerous input", () => {
     description: "Valid description over twenty characters.",
     buildingId: validUuid,
     categoryId: validUuid2,
-    room: "101",
+    floor: "2nd Floor",
+    roomNumber: "101",
+    additionalDetails: "Near the elevator",
   }
 
   // Short title (< 8 chars)

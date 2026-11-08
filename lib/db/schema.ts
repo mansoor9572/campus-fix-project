@@ -140,7 +140,17 @@ export const buildings = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     name: text("name").notNull(),
-    code: text("code").notNull(),
+    code: text("code"),
+    directoryKey: text("directory_key"),
+    indonesianName: text("indonesian_name"),
+    aliases: text("aliases").array().notNull().default([]),
+    faculty: text("faculty"),
+    buildingType: text("building_type"),
+    mapsUrl: text("maps_url"),
+    latitude: real("latitude"),
+    longitude: real("longitude"),
+    verificationStatus: text("verification_status").notNull().default("unverified"),
+    sourceUrl: text("source_url"),
     description: text("description"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
@@ -149,7 +159,7 @@ export const buildings = pgTable(
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (table) => [uniqueIndex("buildings_code_idx").on(table.code)]
+  (table) => [uniqueIndex("buildings_code_idx").on(table.code), uniqueIndex("buildings_directory_key_idx").on(table.directoryKey), index("buildings_name_idx").on(table.name)]
 )
 
 // ─── Departments ─────────────────────────────────────────────────────────────
@@ -206,6 +216,10 @@ export const reports = pgTable(
       .notNull()
       .references(() => buildings.id, { onDelete: "restrict" }),
     room: text("room"),
+    // Nullable additions preserve legacy reports without inventing location data.
+    floor: text("floor"),
+    roomNumber: text("room_number"),
+    additionalDetails: text("additional_details"),
     categoryId: uuid("category_id").references(() => facilityCategories.id, {
       onDelete: "set null",
     }),

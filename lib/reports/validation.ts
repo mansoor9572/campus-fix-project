@@ -1,5 +1,6 @@
 import { statusLabels, priorityLabels } from "./policy"
 import type { ReportStatus, Priority } from "@/lib/db/schema"
+import { LOCATION_LIMITS } from "./location"
 
 export class ReportError extends Error {
   constructor(message: string, public status = 400) { super(message) }
@@ -32,7 +33,7 @@ function enumValue<T extends string>(value: unknown, options: Record<T, string>,
 }
 export function createInput(raw: unknown) {
   const input = object(raw)
-  keys(input, ["title", "description", "buildingId", "categoryId", "room", "priority", "images"])
+  keys(input, ["title", "description", "buildingId", "categoryId", "floor", "roomNumber", "additionalDetails", "priority", "images"])
   // Validate optional images array: each entry must have storageKey, fileUrl, originalFilename, mimeType, fileSize
   let images: Array<{ storageKey: string; fileUrl: string; originalFilename: string; mimeType: string; fileSize: number }> = []
   if (input.images !== undefined) {
@@ -51,14 +52,17 @@ export function createInput(raw: unknown) {
     })
   }
   return { title: textField(input.title, "Title", 8, 120), description: textField(input.description, "Description", 20, 4000),
-    room: textField(input.room, "Location", 2, 120), buildingId: uuid(input.buildingId, "building"), categoryId: uuid(input.categoryId, "category"),
+    floor: textField(input.floor, "Floor", 1, LOCATION_LIMITS.floor),
+    roomNumber: textField(input.roomNumber, "Room number", 1, LOCATION_LIMITS.roomNumber),
+    additionalDetails: input.additionalDetails === undefined ? "" : textField(input.additionalDetails, "Additional details", 0, LOCATION_LIMITS.additionalDetails),
+    buildingId: uuid(input.buildingId, "building"), categoryId: uuid(input.categoryId, "category"),
     priority: input.priority === undefined ? "medium" as Priority : enumValue(input.priority, priorityLabels, "priority"),
     images }
 }
-export type ReportPatchInput = { version: string; status?: ReportStatus; priority?: Priority; title?: string; description?: string; room?: string; buildingId?: string; categoryId?: string; departmentId?: string | null; assignedStaffId?: string | null; note?: string }
+export type ReportPatchInput = { version: string; status?: ReportStatus; priority?: Priority; title?: string; description?: string; room?: string; floor?: string; roomNumber?: string; additionalDetails?: string; buildingId?: string; categoryId?: string; departmentId?: string | null; assignedStaffId?: string | null; note?: string }
 export function patchInput(raw: unknown): ReportPatchInput {
   const input = object(raw)
-  keys(input, ["version", "status", "priority", "title", "description", "room", "buildingId", "categoryId", "departmentId", "assignedStaffId", "note"])
+  keys(input, ["version", "status", "priority", "title", "description", "room", "floor", "roomNumber", "additionalDetails", "buildingId", "categoryId", "departmentId", "assignedStaffId", "note"])
   const output: ReportPatchInput = { version: textField(input.version, "Version", 10, 60) }
   if (Object.keys(input).every(key => key === "version" || key === "note")) throw new ReportError("No report change supplied.")
   if (input.status !== undefined) output.status = enumValue(input.status, statusLabels, "status")
@@ -66,6 +70,10 @@ export function patchInput(raw: unknown): ReportPatchInput {
   if (input.title !== undefined) output.title = textField(input.title, "Title", 8, 120)
   if (input.description !== undefined) output.description = textField(input.description, "Description", 20, 4000)
   if (input.room !== undefined) output.room = textField(input.room, "Location", 2, 120)
+  if (input.floor !== undefined) output.floor = textField(input.floor, "Floor", 1, LOCATION_LIMITS.floor)
+  if (input.roomNumber !== undefined) output.roomNumber = textField(input.roomNumber, "Room number", 1, LOCATION_LIMITS.roomNumber)
+  if (input.additionalDetails !== undefined) output.additionalDetails = textField(input.additionalDetails, "Additional details", 0, LOCATION_LIMITS.additionalDetails)
+  if (input.room !== undefined && (input.floor !== undefined || input.roomNumber !== undefined)) throw new ReportError("Use the separate floor and room number fields.")
   for (const key of ["buildingId", "categoryId"] as const) if (input[key] !== undefined) output[key] = uuid(input[key], key)
   for (const key of ["departmentId", "assignedStaffId"] as const) if (input[key] !== undefined) output[key] = input[key] === null ? null : uuid(input[key], key)
   if (input.note !== undefined) output.note = textField(input.note, "Note", 4, 1000)

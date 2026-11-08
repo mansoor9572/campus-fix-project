@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react"
+import { locationSummary } from "@/lib/reports/location"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -60,7 +61,6 @@ import {
   formatDate,
 } from "@/components/campus-fix/shared"
 import {
-  BUILDING_OPTIONS,
   CATEGORY_OPTIONS,
   DEPARTMENT_BY_CATEGORY,
   DEPARTMENT_OPTIONS,
@@ -124,7 +124,7 @@ export function AdminDashboard() {
 
   const buildings = stats?.byBuilding?.length
     ? stats.byBuilding
-    : BUILDING_OPTIONS.map((building) => ({ building, count: periodReports.filter((report) => report.building === building).length }))
+    : [...new Set(reports.map(report => report.building))].map((building) => ({ building, count: periodReports.filter((report) => report.building === building).length }))
         .filter((item) => item.count > 0)
         .sort((a, b) => b.count - a.count)
 
@@ -236,7 +236,7 @@ export function AdminDashboard() {
 }
 
 function exportReports(reports: CampusReport[]) {
-  const headers = ["Report ID", "Title", "Category", "Building", "Room", "Priority", "Status", "Reporter", "Assigned to", "Submitted"]
+  const headers = ["Report ID", "Title", "Category", "Building", "Floor", "Room Number", "Additional Details", "Priority", "Status", "Reporter", "Assigned to", "Submitted"]
   const csvCell = (value: string | number | null) => {
     let str = String(value ?? "")
     if (/^[=+\-@\t\r]/.test(str)) str = "'" + str
@@ -247,7 +247,9 @@ function exportReports(reports: CampusReport[]) {
     report.title,
     report.category,
     report.building,
-    report.room,
+    report.floor || "",
+    report.roomNumber || report.room,
+    report.additionalDetails || "",
     report.priority,
     report.status,
     report.reporterName,
@@ -278,7 +280,7 @@ export function AdminReports() {
       const matchesPriority = priority === "All priorities" || report.priority === priority
       const matchesCategory = category === "All categories" || report.category === category
       const matchesBuilding = building === "All buildings" || report.building === building
-      const matchesQuery = !normalized || `${report.id} ${report.title} ${report.building} ${report.room} ${report.reporterName} ${report.category}`.toLowerCase().includes(normalized)
+      const matchesQuery = !normalized || `${report.id} ${report.title} ${report.building} ${locationSummary(report)} ${report.reporterName} ${report.category}`.toLowerCase().includes(normalized)
       return matchesStatus && matchesPriority && matchesCategory && matchesBuilding && matchesQuery
     })
   }, [reports, query, status, priority, category, building])
@@ -331,7 +333,7 @@ export function AdminReports() {
             <label className="sr-only" htmlFor="admin-category-filter">Filter by category</label>
             <select id="admin-category-filter" className="filter-select" value={category} onChange={(event) => setCategory(event.target.value as "All categories" | ReportCategory)}><option value="All categories">All categories</option>{CATEGORY_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}</select>
             <label className="sr-only" htmlFor="admin-building-filter">Filter by building</label>
-            <select id="admin-building-filter" className="filter-select" value={building} onChange={(event) => setBuilding(event.target.value)}><option value="All buildings">All buildings</option>{BUILDING_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+            <select id="admin-building-filter" className="filter-select" value={building} onChange={(event) => setBuilding(event.target.value)}><option value="All buildings">All buildings</option>{[...new Set(reports.map(report => report.building))].sort().map((item) => <option key={item} value={item}>{item}</option>)}</select>
           </div>
           <span className="table-toolbar-count">{filteredReports.length} of {reports.length}</span>
         </CardHeader>
@@ -479,7 +481,7 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
                 <h2 className="report-detail-title">{report.title}</h2>
                 <div className="report-detail-meta">
                   <span><CalendarDays aria-hidden="true" />Submitted {formatDate(report.createdAt)}</span>
-                  <span><MapPin aria-hidden="true" />{report.building} · {report.room}</span>
+                  <span><MapPin aria-hidden="true" />{report.building} · {locationSummary(report)}</span>
                   <span><Wrench aria-hidden="true" />{report.category}</span>
                 </div>
               </div>
@@ -659,7 +661,7 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
             <a className="reporter-email-link" href={`mailto:${report.reporterEmail}`}>{report.reporterEmail}</a>
           </PortalCard>
           <PortalCard title="Location" description="Campus site and room." className="detail-location-card">
-            <div className="location-card-icon"><Building2 aria-hidden="true" /></div><strong>{report.building}</strong><span>{report.room}</span><span className="location-category"><MapPin aria-hidden="true" />{report.category}</span>
+            <div className="location-card-icon"><Building2 aria-hidden="true" /></div><strong>{report.building}</strong><span>{locationSummary(report)}</span><span className="location-category"><MapPin aria-hidden="true" />{report.category}</span>
           </PortalCard>
         </div>
       </div>
@@ -706,7 +708,7 @@ export function StaffDashboard() {
                   <span className="task-icon"><Wrench aria-hidden="true" /></span>
                   <div>
                     <Link href={`/staff/tasks/${report.id}`}><h3>{report.title}</h3></Link>
-                    <p>{report.id} · {report.building} · {report.room}</p>
+                    <p>{report.id} · {report.building} · {locationSummary(report)}</p>
                     <div className="task-row-meta"><PriorityBadge priority={report.priority} /><StatusBadge status={report.status} /></div>
                   </div>
                   <div className="task-row-actions">
@@ -795,12 +797,12 @@ export function StaffTaskDetails({ taskId }: { taskId: string }) {
 
   return (
     <>
-      <PageHeader eyebrow="Facilities team" title="Task details" description={`Work order ${task.id} · ${task.building} · ${task.room}.`} actions={<Link className="button-link button-link-secondary" href="/staff/dashboard">Back to my tasks</Link>} />
+      <PageHeader eyebrow="Facilities team" title="Task details" description={`Work order ${task.id} · ${task.building} · ${locationSummary(task)}.`} actions={<Link className="button-link button-link-secondary" href="/staff/dashboard">Back to my tasks</Link>} />
       <DemoBanner>Work notes and status updates appear in the shared report timeline.</DemoBanner>
       <div className="report-detail-grid">
         <div className="detail-main-column">
           <Card className="portal-card">
-            <CardHeader className="portal-card-header"><div><div className="report-detail-topline"><span className="table-id">{task.id}</span><StatusBadge status={task.status} /><PriorityBadge priority={task.priority} /></div><h2 className="report-detail-title">{task.title}</h2><div className="report-detail-meta"><span><CalendarDays aria-hidden="true" />Submitted {formatDate(task.createdAt)}</span><span><MapPin aria-hidden="true" />{task.building} · {task.room}</span><span><Wrench aria-hidden="true" />{task.category}</span></div></div></CardHeader>
+            <CardHeader className="portal-card-header"><div><div className="report-detail-topline"><span className="table-id">{task.id}</span><StatusBadge status={task.status} /><PriorityBadge priority={task.priority} /></div><h2 className="report-detail-title">{task.title}</h2><div className="report-detail-meta"><span><CalendarDays aria-hidden="true" />Submitted {formatDate(task.createdAt)}</span><span><MapPin aria-hidden="true" />{task.building} · {locationSummary(task)}</span><span><Wrench aria-hidden="true" />{task.category}</span></div></div></CardHeader>
             <CardContent className="portal-card-content"><p className="report-description">{task.description}</p>{task.images.length ? <div className="report-photo-grid">{task.images.map((src, index) => <img key={`${task.id}-${index}`} src={src} alt={`Photo attached to ${task.id}`} />)}</div> : null}<div className="detail-summary-grid"><div><span className="report-detail-label">Reported by</span><span className="report-detail-value">{task.reporterName}</span></div><div><span className="report-detail-label">Assigned to</span><span className="report-detail-value">{task.assignedTo ?? "Unassigned"}</span></div></div></CardContent>
           </Card>
           <PortalCard title="Work history" description="Your updates and the original report." className="timeline-card"><ReportTimeline updates={task.updates} /></PortalCard>
@@ -827,7 +829,7 @@ export function StaffTaskDetails({ taskId }: { taskId: string }) {
               ) : null}
             </div>
           </PortalCard>
-          <PortalCard title="Request context" description="The original report details." className="request-context-card"><div className="team-contact-row"><RoleAvatar name={task.reporterName} role="student" /><div><strong>{task.reporterName}</strong><span>{task.reporterProgram}</span></div></div><div className="detail-side-divider" /><span className="report-detail-label">Location</span><span className="report-detail-value">{task.building} · {task.room}</span><span className="report-detail-label">Priority</span><PriorityBadge priority={task.priority} /></PortalCard>
+          <PortalCard title="Request context" description="The original report details." className="request-context-card"><div className="team-contact-row"><RoleAvatar name={task.reporterName} role="student" /><div><strong>{task.reporterName}</strong><span>{task.reporterProgram}</span></div></div><div className="detail-side-divider" /><span className="report-detail-label">Location</span><span className="report-detail-value">{task.building} · {locationSummary(task)}</span><span className="report-detail-label">Priority</span><PriorityBadge priority={task.priority} /></PortalCard>
         </div>
       </div>
     </>

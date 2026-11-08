@@ -19,6 +19,10 @@ node_modules
 .auth-outbox/
 test-results/
 playwright-report/
+tests/fixtures/location/.next/
+tests/fixtures/location/next-env.d.ts
+tests/fixtures/location/AGENTS.md
+tests/fixtures/location/CLAUDE.md
 
 # Uploaded images (keep directory structure, ignore actual uploads)
 public/uploads/*

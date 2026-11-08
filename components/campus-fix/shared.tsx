@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import type { ReactNode } from "react"
+import { locationSummary } from "@/lib/reports/location"
 
 export function BrandMark({ small = false }: { small?: boolean }) {
   return (
@@ -232,7 +233,7 @@ export function ReportTable({
               ) : null}
               <TableCell className="report-primary-cell">
                 <Link href={hrefFor(report)} className="report-title-link">{report.title}</Link>
-                <span className="report-subline">{report.building} · {report.room} · {report.category}</span>
+                <span className="report-subline">{report.building} · {locationSummary(report)} · {report.category}</span>
               </TableCell>
               {showReporter ? (
                 <TableCell>
@@ -269,7 +270,7 @@ export function ReportTable({
             ) : null}
             <div className="mobile-report-copy">
               <Link href={hrefFor(report)} className="mobile-report-title">{report.title}</Link>
-              <span className="report-subline">{report.building} · {report.room} · {report.category}</span>
+              <span className="report-subline">{report.building} · {locationSummary(report)} · {report.category}</span>
             </div>
             <Link href={hrefFor(report)} className="table-open-link" aria-label={`View ${report.id}`}>
               <ArrowRight aria-hidden="true" />

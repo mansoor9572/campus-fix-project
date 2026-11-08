@@ -10,7 +10,8 @@ import { eq, inArray } from "drizzle-orm"
 
 const testSuffix = Math.random().toString(36).substring(2, 9)
 
-test("full report lifecycle and authorization integration test", async () => {
+test("full report lifecycle and authorization integration test", { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  assert.ok(process.env.DATABASE_URL === process.env.TEST_DATABASE_URL, "Run through scripts/test-reports.ts against the test branch.")
   // 1. Setup temporary test users
   const studentEmail = `report-test-student-${testSuffix}@campus.test`
   const student2Email = `report-test-student2-${testSuffix}@campus.test`
@@ -64,7 +65,9 @@ test("full report lifecycle and authorization integration test", async () => {
       description: "The window latch on the third floor is broken and rattling in the wind.",
       buildingId: building.id,
       categoryId: category.id,
-      room: "Room 304",
+      floor: "2nd Floor",
+      roomNumber: "Room 304",
+      additionalDetails: "Near the elevator",
       priority: "High",
     })
 
@@ -75,6 +78,14 @@ test("full report lifecycle and authorization integration test", async () => {
     assert.equal(created.status, "Submitted")
     assert.equal(created.priority, "High")
     assert.equal(created.building, building.name)
+    assert.equal(created.buildingId, building.id)
+    assert.equal(created.floor, "2nd Floor")
+    assert.equal(created.roomNumber, "Room 304")
+    assert.equal(created.additionalDetails, "Near the elevator")
+    const [stored] = await db.select().from(reports).where(eq(reports.id, created.dbId))
+    assert.equal(stored.floor, created.floor)
+    assert.equal(stored.roomNumber, created.roomNumber)
+    assert.equal(stored.additionalDetails, created.additionalDetails)
     assert.equal(created.category, category.name)
     assert.equal(created.updates.length, 1)
 
