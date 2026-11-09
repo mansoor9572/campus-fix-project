@@ -22,6 +22,6 @@
 
 ## Necessary schema addition
 
-The existing report table has no department assignment column. An additive migration introduces nullable `reports.department_id`, its department foreign key (`ON DELETE SET NULL`), and an index. Existing rows stay null; no data is backfilled, reset or reseeded. All other authentication/report/history/assignment tables and existing migrations are retained. Category defaults remain reference data, not a substitute for an explicit report assignment. The schema has no staff-department membership model; any active verified maintenance staff member is eligible for an administrator's assignment.
+The report department migration adds nullable `reports.department_id`, its department foreign key (`ON DELETE SET NULL`), and an index. Existing rows are preserved. Migration `0003_team_accounts.sql` additionally connects each worker to a department through `users.department_id`. Assignments require an active worker in the report's selected active department. Existing workers need an administrator to configure their membership. Category defaults remain reference data, not a substitute for explicit assignment. See [Team management](docs/TEAM-MANAGEMENT.md) for account provisioning, first-login password changes, and assignment behavior.
 
 Integration tests must use a verified separate Neon branch. They must never fall back to the application's `DATABASE_URL`. The additive migration must be validated on that branch before rollout to the application database.

@@ -1,5 +1,5 @@
 export type Role = "student" | "admin" | "staff"
-export type ReportStatus = "Submitted" | "Under Review" | "In Progress" | "Resolved" | "Reopened" | "Rejected"
+export type ReportStatus = "Submitted" | "Under Review" | "Approved" | "Assigned" | "In Progress" | "Resolved" | "Closed" | "Reopened" | "Rejected"
 export type Priority = "Low" | "Medium" | "High" | "Urgent"
 export type ReportCategory = "HVAC" | "Electrical" | "Plumbing" | "IT & AV" | "Furniture" | "Safety" | "Cleaning" | "Other"
 export type MaintenanceDepartment = typeof DEPARTMENT_OPTIONS[number]
@@ -29,6 +29,8 @@ export type CampusReport = {
   reporterEmail: string
   reporterProgram: string
   assignedTo: string | null
+  assignedStaffId?: string | null
+  departmentId?: string | null
   department?: MaintenanceDepartment | null
   createdAt: string
   updatedAt: string

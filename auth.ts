@@ -66,13 +66,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => {
         token.email = current.email
         token.picture = current.image
         token.role = current.role
+        token.mustChangePassword = current.mustChangePassword
         token.sessionExpires = current.expires.getTime()
         return token
       },
       async session({ session, token }) {
         if (token.role !== "student" && token.role !== "admin" && token.role !== "maintenance_staff") throw new Error("Invalid role")
         if (typeof token.sessionExpires !== "number") throw new Error("Invalid session expiry")
-        return { ...session, user: { ...session.user, id: token.sub!, role: token.role }, expires: new Date(token.sessionExpires).toISOString() }
+        return { ...session, user: { ...session.user, id: token.sub!, role: token.role, mustChangePassword: token.mustChangePassword === true }, expires: new Date(token.sessionExpires).toISOString() }
       },
     },
     events: {

@@ -24,6 +24,7 @@ import {
 import type { Role } from "@/lib/campus-fix/data"
 import { AccountRecoveryPage } from "./account-recovery"
 import { BuildingDirectoryPage } from "./building-directory-page"
+import { TeamManagementPage } from "./team-management"
 
 function pathRole(route: string): Role | null {
   const prefix = route.split("/")[1]
@@ -55,6 +56,7 @@ export function CampusFixRouter({ route }: { route: string }) {
     content = <StudentReportDetails key={reportId} reportId={reportId} />
   } else if (normalizedRoute === "/admin/dashboard") content = <AdminDashboard />
   else if (normalizedRoute === "/admin/buildings") content = <BuildingDirectoryPage />
+  else if (normalizedRoute === "/admin/team") content = <TeamManagementPage />
   else if (normalizedRoute === "/admin/reports") content = <AdminReports />
   else if (normalizedRoute.startsWith("/admin/reports/")) {
     const reportId = normalizedRoute.split("/").at(-1) ?? ""

@@ -10,6 +10,7 @@ import {
   uniqueIndex,
   index,
   primaryKey,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core"
 import { relations } from "drizzle-orm"
 import type { AdapterAccountType } from "next-auth/adapters"
@@ -72,6 +73,9 @@ export const users = pgTable(
     image: text("image"),
     password: text("password"), // hashed, nullable for OAuth users
     role: userRoleEnum("role").notNull().default("student"),
+    departmentId: uuid("department_id").references((): AnyPgColumn => departments.id, { onDelete: "restrict" }),
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
+    adminProvisioned: boolean("admin_provisioned").notNull().default(false),
     studentNumber: text("student_number"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
@@ -83,6 +87,7 @@ export const users = pgTable(
   (table) => [
     uniqueIndex("users_email_idx").on(table.email),
     index("users_role_idx").on(table.role),
+    index("users_department_idx").on(table.departmentId),
     index("users_student_number_idx").on(table.studentNumber),
   ]
 )

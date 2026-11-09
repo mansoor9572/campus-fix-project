@@ -1039,3 +1039,20 @@ img { display: block; max-width: 100%; }
 .resolution-evidence-placeholder > span { display: grid; flex: 0 0 28px; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: #edf4f9; color: #6388a5; }
 .resolution-evidence-placeholder svg { width: 15px; height: 15px; }
 .resolution-evidence-placeholder p { margin: 2px 0 0; color: #8492a0; font-size: 9px; line-height: 1.55; }
+/* Team accounts and assignment forms share the existing portal palette. */
+.team-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: .75rem 0; align-items: center; }
+.team-form { display: grid; gap: 1rem; min-width: 0; }
+.team-form select, .team-form input:not([type="checkbox"]) { min-width: 0; width: 100%; max-width: 100%; }
+.team-form label { display: grid; gap: .5rem; font-weight: 500; }
+.team-form small, .team-form p, .team-member p { color: var(--muted-foreground); }
+.team-form .team-confirm { display: flex; align-items: flex-start; font-weight: 400; }
+.team-feedback { padding: 1rem; border: 1px solid var(--border); border-radius: .75rem; margin: 1rem 0; }
+.team-member-list { display: grid; margin-top: 1rem; }
+.team-member { display: flex; gap: 1rem; align-items: center; justify-content: space-between; padding: 1rem 0; border-bottom: 1px solid var(--border); }
+.team-member p { margin: .25rem 0; overflow-wrap: anywhere; }
+.team-member > div { min-width: 0; }
+.team-password-page { min-height: 100vh; display: grid; place-items: center; padding: 1.5rem; }
+.team-password-card { width: 100%; max-width: 32rem; padding: 2rem; }
+.team-password-card h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 1rem; }
+.team-password-card > p { margin-bottom: 1.5rem; }
+.team-password-value { overflow-wrap: anywhere; }

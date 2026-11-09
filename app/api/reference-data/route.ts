@@ -8,9 +8,9 @@ export async function GET() {
   if (authResult.error) return authResult.error
 
   try {
-    const data = await getReferenceData()
+    const data = await getReferenceData(authResult.user.role === "admin")
     return Response.json(data, {
-      headers: { "Cache-Control": "private, max-age=60" },
+      headers: { "Cache-Control": "no-store" },
     })
   } catch (error) {
     console.error("Reference data error:", error)

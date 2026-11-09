@@ -20,7 +20,7 @@ export async function rateLimit(scope: string, key: string, limit: number, secon
 }
 
 export async function limitAuthRequest(scope: string, email: string) {
-  await rateLimit(scope, email, scope === "login" ? 10 : 5)
+  await rateLimit(scope, email, scope.startsWith("team-") ? 60 : scope === "login" ? 10 : 5)
   // No trust in caller-supplied forwarding headers. Global cap also bounds random-email abuse.
   await rateLimit("global", "all-auth-requests", 300, 60)
 }

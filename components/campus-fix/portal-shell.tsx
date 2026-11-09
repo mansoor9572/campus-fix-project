@@ -62,6 +62,7 @@ function getNavigation(role: Role): NavigationItem[] {
     return [
       { label: "Overview", href: "/admin/dashboard", icon: LayoutDashboard },
       { label: "All reports", href: "/admin/reports", icon: ClipboardCheck },
+      { label: "Team management", href: "/admin/team", icon: UserRound },
       { label: "Building directory", href: "/admin/buildings", icon: LayoutDashboard },
       { label: "Notifications", href: "/notifications", icon: Bell },
     ]
@@ -146,6 +147,7 @@ function getPageTitle(route: string, role: Role) {
   if (route === "/student/reports/new") return "New report"
   if (route.startsWith("/student/reports/")) return "Report details"
   if (route === "/admin/reports") return "All reports"
+  if (route === "/admin/team") return "Team management"
   if (route.startsWith("/admin/reports/")) return "Review report"
   if (route.startsWith("/staff/tasks/")) return "Task details"
   if (route === "/notifications" || route === "/student/notifications") return "Notifications"

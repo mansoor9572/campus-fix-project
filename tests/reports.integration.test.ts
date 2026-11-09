@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { config } from "dotenv"
 config({ path: ".env.local" })
 
-import { db, users, reports, reportStatusHistory, reportAssignments, notifications, auditLogs, buildings, facilityCategories } from "../lib/db"
+import { db, users, reports, reportStatusHistory, reportAssignments, notifications, auditLogs, buildings, facilityCategories, departments } from "../lib/db"
 import { createReport, getReportById, listReports, updateReport, addReportNote, getDashboardStats } from "../lib/reports/service"
 import { ReportError } from "../lib/reports/validation"
 import { eq, inArray } from "drizzle-orm"
@@ -54,6 +54,9 @@ test("full report lifecycle and authorization integration test", { skip: !proces
 
   assert.ok(building, "Seed building must exist")
   assert.ok(category, "Seed category must exist")
+  const [department] = await db.select().from(departments).where(eq(departments.isActive, true)).limit(1)
+  assert.ok(department, "Seed department must exist")
+  await db.update(users).set({ departmentId: department.id }).where(eq(users.id, staff.id))
 
   let createdReportId = ""
   let createdDbId = ""
@@ -121,6 +124,7 @@ test("full report lifecycle and authorization integration test", { skip: !proces
     const assignedReport = await updateReport(admin, createdReportId, {
       version: viewOwn.version,
       assignedStaffId: staff.id,
+      departmentId: department.id,
       note: "Assigned to on-duty technician for inspection.",
     })
 

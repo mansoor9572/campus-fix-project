@@ -17,6 +17,7 @@ import {
   type UserRole,
 } from "@/lib/db"
 import { locationSummary } from "./location"
+import { teamWriteLock } from "@/lib/team/service"
 import type { ReportUpdate } from "@/lib/campus-fix/data"
 import { triageFacilityIssue } from "@/lib/ai/gemini"
 import { saveAiAnalysis, getAiAnalysis } from "@/lib/ai/service"
@@ -458,6 +459,9 @@ export async function listReports(
     reporterName: r.reporterName ?? "Campus User",
     reporterEmail: r.reporterEmail ?? "",
     reporterProgram: r.reporterProgram ?? "Student",
+    assignedStaffId: r.assignedStaffId,
+    departmentId: r.departmentId,
+    version: r.updatedAt.toISOString(),
     assignedTo: r.assignedStaffId ? staffMap[r.assignedStaffId] ?? null : null,
     department: r.departmentName ?? null,
     createdAt: r.createdAt.toISOString(),
@@ -692,7 +696,7 @@ export async function updateReport(
   // Concurrency check (tolerates ISO millisecond formatting differences)
   const currentVersionTime = new Date(current.updatedAt).getTime()
   const patchVersionTime = new Date(patch.version).getTime()
-  if (isNaN(patchVersionTime) || Math.abs(currentVersionTime - patchVersionTime) > 1000) {
+  if (isNaN(patchVersionTime) || currentVersionTime !== patchVersionTime) {
     throw new ReportError(
       "This report was updated by another user. Please reload and try again.",
       409
@@ -712,6 +716,7 @@ export async function updateReport(
   }
 
   if (actor.role === "maintenance_staff") {
+    if (Object.keys(patch).some(key => !["version", "status", "note"].includes(key))) throw new ReportError("Workers can only update task status and add work notes.", 403)
     if (patch.priority !== undefined) throw new ReportError("Staff cannot modify priority.", 403)
     if (patch.categoryId !== undefined) throw new ReportError("Staff cannot modify category.", 403)
     if (patch.buildingId !== undefined) throw new ReportError("Staff cannot modify building.", 403)
@@ -749,149 +754,69 @@ export async function updateReport(
   if (patch.priority !== undefined) updateValues.priority = patch.priority
   if (patch.departmentId !== undefined) updateValues.departmentId = patch.departmentId
 
-  let newStatus = current.status
-
-  // Status transition
-  if (patch.status && patch.status !== current.status) {
-    newStatus = patch.status
-    updateValues.status = newStatus
-
-    if (newStatus === "resolved") {
-      updateValues.resolvedAt = new Date()
-    } else if (newStatus === "closed") {
-      updateValues.closedAt = new Date()
-    }
-
-    await db.insert(reportStatusHistory).values({
-      reportId: current.id,
-      previousStatus: current.status,
-      newStatus,
-      actorId: actor.id,
-      isPublic: true,
-      note: patch.note || `Status changed to ${statusLabels[newStatus]}.`,
-    })
-
-    // Notify student
-    await db.insert(notifications).values({
-      recipientId: current.studentId,
-      reportId: current.id,
-      title: `Report ${current.referenceNumber} updated`,
-      message: `Status is now ${statusLabels[newStatus]}.`,
-      type: newStatus === "resolved" ? "report_resolved" : "status_update",
-    })
-  } else if (patch.note) {
-    // Note without status change
-    await db.insert(reportStatusHistory).values({
-      reportId: current.id,
-      previousStatus: current.status,
-      newStatus: current.status,
-      actorId: actor.id,
-      isPublic: actor.role === "student" ? true : true,
-      note: patch.note,
-    })
+  const assignmentChanged = patch.assignedStaffId !== undefined && patch.assignedStaffId !== current.assignedStaffId
+  const departmentId = patch.departmentId !== undefined ? patch.departmentId : current.departmentId
+  const departmentChanged = departmentId !== current.departmentId
+  const staffId = patch.assignedStaffId !== undefined ? patch.assignedStaffId : current.assignedStaffId
+  let newStatus = patch.status ?? current.status
+  if (assignmentChanged) {
+    if (["resolved", "closed", "rejected"].includes(current.status)) throw new ReportError("Reopen this report before assigning work.")
+    newStatus = staffId ? "assigned" : "under_review"
+    updateValues.assignedStaffId = staffId
   }
+  if ((newStatus === "assigned" || newStatus === "in_progress") && !staffId) throw new ReportError("Assign a worker before starting work.")
+  if (staffId && !departmentId && (assignmentChanged || departmentChanged)) throw new ReportError("Choose the worker's department.")
+  updateValues.status = newStatus
+  if (newStatus === "resolved") updateValues.resolvedAt = new Date()
+  if (newStatus === "closed") updateValues.closedAt = new Date()
+  const statusChanged = newStatus !== current.status
+  const note = patch.note || (assignmentChanged ? (staffId ? "A technician was assigned to this report." : "Technician assignment removed.")
+    : statusChanged ? `Status changed to ${statusLabels[newStatus]}.` : departmentChanged ? "Responsible department updated." : "Report details updated.")
+  const eligibility = staffId && (assignmentChanged || departmentChanged || newStatus === "assigned" || newStatus === "in_progress")
+    ? sql`EXISTS (SELECT 1 FROM users worker
+        WHERE worker.id = ${staffId}::uuid AND worker.role = 'maintenance_staff' AND worker.is_active
+        AND (${!(assignmentChanged || departmentChanged)} OR (worker.department_id = ${departmentId}::uuid
+          AND EXISTS (SELECT 1 FROM departments d WHERE d.id = worker.department_id AND d.is_active)))
+        AND (worker.email_verified IS NOT NULL OR worker.admin_provisioned))`
+    : sql`true`
+  const access = actor.role === "admin" ? sql`true`
+    : actor.role === "student" ? eq(reports.studentId, actor.id) : eq(reports.assignedStaffId, actor.id)
+  const mutation = db.update(reports).set(updateValues).where(and(
+    eq(reports.id, current.id), access, eligibility,
+    sql`date_trunc('milliseconds', ${reports.updatedAt}) = ${patch.version}::timestamp`,
+    sql`EXISTS (SELECT 1 FROM users actor WHERE actor.id = ${actor.id}::uuid AND actor.role = ${actor.role}::user_role AND actor.is_active AND NOT actor.must_change_password)`,
+    departmentChanged && departmentId ? sql`EXISTS (SELECT 1 FROM departments WHERE id = ${departmentId}::uuid AND is_active)` : sql`true`,
+  )).returning({ id: reports.id })
+  // All effects derive from the guarded update, in a single transaction.
+  const [, result] = await db.batch([
+    db.execute(teamWriteLock),
+    db.execute(sql`WITH changed AS (${mutation.getSQL()}), history AS (
+      INSERT INTO report_status_history (report_id, previous_status, new_status, actor_id, is_public, note)
+      SELECT id, ${current.status}::report_status, ${newStatus}::report_status, ${actor.id}::uuid, true, ${note} FROM changed
+    ), old_assignments AS (
+      UPDATE report_assignments SET status = ${assignmentChanged ? (staffId ? "reassigned" : "cancelled") : "completed"}::assignment_status, completed_at = now()
+      WHERE report_id IN (SELECT id FROM changed) AND status = 'active'
+      AND ${assignmentChanged || ["resolved", "closed", "rejected"].includes(newStatus)}
+    ), assigned AS (
+      INSERT INTO report_assignments (report_id, assigned_staff_id, assigned_by_id, status)
+      SELECT id, ${staffId}::uuid, ${actor.id}::uuid, 'active' FROM changed WHERE ${assignmentChanged && !!staffId}
+    ), worker_notice AS (
+      INSERT INTO notifications (recipient_id, report_id, title, message, type)
+      SELECT ${staffId}::uuid, id, 'New work order assigned', ${`You were assigned report ${current.referenceNumber}.`}, 'report_assigned'
+      FROM changed WHERE ${assignmentChanged && !!staffId}
+    ), student_notice AS (
+      INSERT INTO notifications (recipient_id, report_id, title, message, type)
+      SELECT ${current.studentId}::uuid, id, ${`Report ${current.referenceNumber} updated`}, ${note},
+        ${newStatus === "resolved" ? "report_resolved" : assignmentChanged ? "report_assigned" : "status_update"}::notification_type
+      FROM changed WHERE ${assignmentChanged || statusChanged}
+    ), audited AS (
+      INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, metadata)
+      SELECT ${actor.id}::uuid, 'report.updated', 'report', id::text,
+        ${JSON.stringify({ status: newStatus, assignedStaffId: staffId, departmentId, priority: updateValues.priority ?? current.priority })} FROM changed
+    ) SELECT id FROM changed`),
+  ])
+  if (!result.rows.length) throw new ReportError("Change not saved. Reload the report and select an active worker from its department; the report or account may have changed.", 409)
 
-  // Staff assignment (admin only)
-  if (patch.assignedStaffId !== undefined && patch.assignedStaffId !== current.assignedStaffId) {
-    if (patch.assignedStaffId !== null) {
-      // Verify technician exists, is active and has maintenance_staff role
-      const [staff] = await db
-        .select({ id: users.id, name: users.name })
-        .from(users)
-        .where(
-          and(
-            eq(users.id, patch.assignedStaffId),
-            eq(users.role, "maintenance_staff"),
-            eq(users.isActive, true)
-          )
-        )
-        .limit(1)
-
-      if (!staff) throw new ReportError("Selected maintenance staff member not found or inactive.", 404)
-
-      // Close any active assignment
-      await db
-        .update(reportAssignments)
-        .set({ status: "reassigned", completedAt: new Date() })
-        .where(and(eq(reportAssignments.reportId, current.id), eq(reportAssignments.status, "active")))
-
-      // Create new active assignment
-      await db.insert(reportAssignments).values({
-        reportId: current.id,
-        assignedStaffId: patch.assignedStaffId,
-        assignedById: actor.id,
-        status: "active",
-      })
-
-      updateValues.assignedStaffId = patch.assignedStaffId
-
-      // Auto-move status to "assigned" or "under_review" if currently submitted
-      if (current.status === "submitted" && !patch.status) {
-        updateValues.status = "assigned"
-        newStatus = "assigned"
-
-        await db.insert(reportStatusHistory).values({
-          reportId: current.id,
-          previousStatus: "submitted",
-          newStatus: "assigned",
-          actorId: actor.id,
-          isPublic: true,
-          note: `Assigned to technician ${staff.name}.`,
-        })
-      }
-
-      // Notify technician
-      await db.insert(notifications).values({
-        recipientId: patch.assignedStaffId,
-        reportId: current.id,
-        title: "New work order assigned",
-        message: `You were assigned report ${current.referenceNumber}.`,
-        type: "report_assigned",
-      })
-
-      // Notify student
-      await db.insert(notifications).values({
-        recipientId: current.studentId,
-        reportId: current.id,
-        title: "Technician assigned",
-        message: `A technician (${staff.name}) was assigned to ${current.referenceNumber}.`,
-        type: "report_assigned",
-      })
-    } else {
-      // Staff assignment removed
-      await db
-        .update(reportAssignments)
-        .set({ status: "cancelled", completedAt: new Date() })
-        .where(and(eq(reportAssignments.reportId, current.id), eq(reportAssignments.status, "active")))
-
-      updateValues.assignedStaffId = null
-
-      await db.insert(reportStatusHistory).values({
-        reportId: current.id,
-        previousStatus: current.status,
-        newStatus: current.status,
-        actorId: actor.id,
-        isPublic: true,
-        note: "Technician assignment removed.",
-      })
-    }
-  }
-
-  // Apply report row updates
-  await db.update(reports).set(updateValues).where(eq(reports.id, current.id))
-
-  // Audit log
-  await db.insert(auditLogs).values({
-    actorId: actor.id,
-    action: "report.updated",
-    entityType: "report",
-    entityId: current.id,
-    metadata: JSON.stringify({
-      status: newStatus,
-      assignedStaffId: updateValues.assignedStaffId ?? current.assignedStaffId,
-      priority: updateValues.priority ?? current.priority,
-    }),
-  })
 
   return getReportById(actor, current.id)
 }
@@ -1101,7 +1026,7 @@ export async function getDashboardStats(
 
 // ─── Reference Data (Buildings, Categories, Departments, Staff) ───────────────
 
-export async function getReferenceData() {
+export async function getReferenceData(includeStaff = false) {
   const [buildingRows, categoryRows, departmentRows, staffRows] = await Promise.all([
     db
       .select({
@@ -1142,13 +1067,15 @@ export async function getReferenceData() {
         id: users.id,
         name: users.name,
         email: users.email,
+        departmentId: users.departmentId,
+        openTasks: sql<number>`(SELECT count(*)::integer FROM reports WHERE assigned_staff_id = users.id AND status NOT IN ('resolved','closed','rejected'))`,
       })
       .from(users)
       .where(
         and(
           eq(users.role, "maintenance_staff"),
           eq(users.isActive, true),
-          sql`${users.emailVerified} IS NOT NULL`
+          sql`(${users.emailVerified} IS NOT NULL OR ${users.adminProvisioned})`
         )
       )
       .orderBy(users.name),
@@ -1158,7 +1085,7 @@ export async function getReferenceData() {
     buildings: buildingRows,
     categories: categoryRows,
     departments: departmentRows,
-    staff: staffRows,
+    staff: includeStaff ? staffRows : [],
   }
 }
 

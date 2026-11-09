@@ -34,7 +34,8 @@ export type ReportPatch = {
   priority?: Priority
   category?: ReportCategory
   department?: MaintenanceDepartment | null
-  assignedTo?: string | null
+  assignedStaffId?: string | null
+  departmentId?: string | null
 }
 
 type Preferences = {
@@ -48,7 +49,7 @@ type ReferenceData = {
   buildings: Array<{ id: string; name: string; code: string | null }>
   categories: Array<{ id: string; name: string; defaultDepartmentId?: string | null }>
   departments: Array<{ id: string; name: string }>
-  staff: Array<{ id: string; name: string; email: string }>
+  staff: Array<{ id: string; name: string; email: string; departmentId: string | null; openTasks: number }>
 }
 
 export type DashboardStats = {
@@ -66,6 +67,8 @@ export type DashboardStats = {
 }
 
 type DemoDataContextValue = {
+  currentUserId: string | null
+  refData: ReferenceData
   reports: CampusReport[]
   notifications: CampusNotification[]
   profiles: Record<Role, DemoProfile>
@@ -76,8 +79,8 @@ type DemoDataContextValue = {
   setSearchTerm: (value: string) => void
   fetchStats: (days?: string) => Promise<DashboardStats | null>
   addReport: (input: NewReportInput) => Promise<string>
-  changeReport: (id: string, patch: ReportPatch, actor?: string) => void
-  addReportUpdate: (id: string, message: string, actor: string, title?: string) => void
+  changeReport: (id: string, patch: ReportPatch, actor?: string) => Promise<boolean>
+  addReportUpdate: (id: string, message: string, actor: string, title?: string) => Promise<boolean>
   markNotificationRead: (id: string) => void
   markAllNotificationsRead: () => void
   updateProfile: (role: Role, values: Partial<DemoProfile>) => void
@@ -133,7 +136,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
 
   const fetchStats = useCallback(
     async (days = "all"): Promise<DashboardStats | null> => {
-      if (status !== "authenticated" || !session?.user) return null
+      if (status !== "authenticated" || !session?.user || session.user.mustChangePassword) return null
       try {
         const res = await fetch(`/api/reports/stats?days=${encodeURIComponent(days)}`)
         if (res.ok) {
@@ -146,12 +149,12 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
       }
       return null
     },
-    [status, session?.user]
+    [status, session]
   )
 
   // Load real data from server when authenticated
   useEffect(() => {
-    if (status !== "authenticated" || !session?.user) return
+    if (status !== "authenticated" || !session?.user || session.user.mustChangePassword) return
 
     let isMounted = true
 
@@ -201,7 +204,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false
     }
-  }, [status, session?.user])
+  }, [status, session])
 
   const addReport = async (input: NewReportInput): Promise<string> => {
     if (!session?.user) throw new Error("Sign in before submitting a report.")
@@ -241,174 +244,50 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
     return result.id
   }
 
-  const changeReport = (id: string, patch: ReportPatch, actor = "Campus Operations") => {
-    const createdAt = new Date().toISOString()
-    const targetReport = reports.find((r) => r.id === id)
-
-    setReports((current) =>
-      current.map((report) => {
-        if (report.id !== id) return report
-        const parts: string[] = []
-        if (patch.status && patch.status !== report.status) parts.push(`Status changed to ${patch.status}.`)
-        if (patch.priority && patch.priority !== report.priority) parts.push(`Priority changed to ${patch.priority}.`)
-        if (patch.category && patch.category !== report.category) parts.push(`Category changed to ${patch.category}.`)
-        if (patch.department !== undefined && patch.department !== report.department) {
-          parts.push(patch.department ? `Routed to ${patch.department}.` : "Department assignment removed.")
-        }
-        if (patch.assignedTo !== undefined && patch.assignedTo !== report.assignedTo) {
-          parts.push(patch.assignedTo ? `Assigned to ${patch.assignedTo}.` : "Assignment removed.")
-        }
-        const updates = parts.length
-          ? [
-              {
-                id: `${id}-${Date.now()}`,
-                createdAt,
-                actor,
-                title: "Report updated",
-                message: parts.join(" "),
-              },
-              ...report.updates,
-            ]
-          : report.updates
-        return { ...report, ...patch, updatedAt: createdAt, version: createdAt, updates }
-      })
-    )
-
-    if (patch.status) {
-      setNotifications((current) => [
-        {
-          id: `${id}-status-${Date.now()}`,
-          title: `Report ${id} updated`,
-          message: `The status is now ${patch.status}.`,
-          createdAt,
-          read: false,
-          reportId: id,
-          type: "status",
-        },
-        ...current,
-      ])
-    }
-
-    // If authenticated, sync with server
-    if (session?.user && targetReport) {
-      const payload: Record<string, unknown> = {
-        version: targetReport.version || targetReport.updatedAt,
-      }
-
-      if (patch.status) {
-        payload.status = patch.status.toLowerCase().replace(/ /g, "_")
-      }
-      if (patch.priority) {
-        payload.priority =
-          patch.priority === "Urgent" || patch.priority === "High"
-            ? "high"
-            : patch.priority === "Low"
-              ? "low"
-              : "medium"
-      }
+  const changeReport = async (id: string, patch: ReportPatch): Promise<boolean> => {
+    const report = reports.find(item => item.id === id)
+    if (!session?.user || !report) return false
+    try {
+      const payload: Record<string, unknown> = { version: report.version || report.updatedAt }
+      if (patch.status) payload.status = patch.status.toLowerCase().replaceAll(" ", "_")
+      if (patch.priority) payload.priority = patch.priority === "Urgent" ? "high" : patch.priority.toLowerCase()
       if (patch.category) {
-        const cat = refData.categories.find(
-          (c) => c.name.toLowerCase() === patch.category?.toLowerCase()
-        )
-        if (cat) payload.categoryId = cat.id
+        const category = refData.categories.find(item => item.name.toLowerCase() === patch.category?.toLowerCase())
+        if (!category) throw new Error("Choose an available category.")
+        payload.categoryId = category.id
       }
       if (patch.department !== undefined) {
-        if (patch.department === null) {
-          payload.departmentId = null
-        } else {
-          const dept = refData.departments.find(
-            (d) => d.name.toLowerCase() === patch.department?.toLowerCase()
-          )
-          if (dept) payload.departmentId = dept.id
-        }
+        const department = refData.departments.find(item => item.name === patch.department)
+        if (patch.department && !department) throw new Error("Choose an available department.")
+        payload.departmentId = department?.id ?? null
       }
-      if (patch.assignedTo !== undefined) {
-        if (patch.assignedTo === null || patch.assignedTo === "") {
-          payload.assignedStaffId = null
-        } else {
-          const staffMember = refData.staff.find(
-            (s) => s.name.toLowerCase() === patch.assignedTo?.toLowerCase()
-          )
-          if (staffMember) payload.assignedStaffId = staffMember.id
-        }
-      }
-
-      fetch(`/api/reports/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            throw new Error(data.message || "Failed to update report.")
-          }
-          const serverReport = await res.json()
-          setReports((current) =>
-            current.map((r) => (r.id === id ? normalizeReport({ ...r, ...serverReport }) : r))
-          )
-          void fetchStats()
-        })
-        .catch((err) => {
-          console.error("Change report error:", err)
-          toast.error(err.message || "Failed to update report on server.")
-        })
-    }
+      if (patch.departmentId !== undefined) payload.departmentId = patch.departmentId
+      if (patch.assignedStaffId !== undefined) payload.assignedStaffId = patch.assignedStaffId
+      const response = await fetch(`/api/reports/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message || "Unable to save report.")
+      setReports(current => current.map(item => item.id === id ? normalizeReport(result) : item))
+      void fetchStats()
+      return true
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to save report."); return false }
   }
 
-  const addReportUpdate = (
-    id: string,
-    message: string,
-    actor: string,
-    title = "Team note added"
-  ) => {
-    const createdAt = new Date().toISOString()
-    const targetReport = reports.find((r) => r.id === id)
-
-    setReports((current) =>
-      current.map((report) => {
-        if (report.id !== id) return report
-        return {
-          ...report,
-          updatedAt: createdAt,
-          version: createdAt,
-          updates: [
-            {
-              id: `${id}-${Date.now()}`,
-              createdAt,
-              actor,
-              title,
-              message,
-            },
-            ...report.updates,
-          ],
-        }
-      })
-    )
-
-    // If authenticated, sync note to server
-    if (session?.user && targetReport) {
-      fetch(`/api/reports/${id}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          isPublic: true,
-          version: targetReport.version || targetReport.updatedAt,
-        }),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            throw new Error(data.message || "Failed to add note.")
-          }
-        })
-        .catch((err) => {
-          console.error("Add report update error:", err)
-          toast.error(err.message || "Failed to add note on server.")
-        })
-    }
+  const addReportUpdate = async (id: string, message: string): Promise<boolean> => {
+    const report = reports.find(item => item.id === id)
+    if (!session?.user || !report) return false
+    try {
+      const response = await fetch(`/api/reports/${id}/notes`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, isPublic: true, version: report.version || report.updatedAt }) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message || "Unable to save note.")
+      const refreshed = await fetch(`/api/reports/${id}`)
+      if (!refreshed.ok) throw new Error("Note saved. Reload to see the updated history.")
+      const updated = normalizeReport(await refreshed.json())
+      setReports(current => current.map(item => item.id === id ? updated : item))
+      return true
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to save note."); return false }
   }
+
 
   const markNotificationRead = (id: string) => {
     setNotifications((current) =>
@@ -450,6 +329,8 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
   return (
     <DemoDataContext.Provider
       value={{
+        currentUserId: session?.user?.id ?? null,
+        refData,
         reports,
         notifications,
         profiles,

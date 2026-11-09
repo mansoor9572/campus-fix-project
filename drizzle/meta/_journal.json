@@ -22,6 +22,13 @@
       "when": 1794045666043,
       "tag": "0002_umy_directory_report_location",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794238304580,
+      "tag": "0003_team_accounts",
+      "breakpoints": true
     }
   ]
 }

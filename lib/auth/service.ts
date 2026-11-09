@@ -121,7 +121,7 @@ export async function resetPassword(input: Record<string, unknown>) {
     WITH consumed AS (
       DELETE FROM verification_tokens WHERE identifier = ${record.identifier} AND token = ${digest(token)} AND expires > now() RETURNING identifier
     ), changed AS (
-      UPDATE users SET password = ${passwordHash}, updated_at = now()
+      UPDATE users SET password = ${passwordHash}, must_change_password = false, updated_at = now()
       WHERE id = ${userId}::uuid AND password = ${user.password} AND is_active = true AND EXISTS (SELECT 1 FROM consumed)
       RETURNING id
     ), revoked AS (
@@ -139,7 +139,7 @@ export async function authenticate(input: Partial<Record<string, unknown>>) {
   await limitAuthRequest("login", email)
   const user = await findByEmail(email)
   const correct = await compare(input.password, user?.password || dummyHash)
-  if (!correct || !user?.password || !user.isActive || !user.emailVerified) return null
+  if (!correct || !user?.password || !user.isActive || (!user.emailVerified && !user.adminProvisioned)) return null
   const sessionId = newToken()
   const expires = new Date(Date.now() + (input.remember === "true" ? SESSION_MAX_AGE : SHORT_SESSION_AGE) * 1000)
   // A row lock orders concurrent reset/login: reset either removes this session,
@@ -147,7 +147,7 @@ export async function authenticate(input: Partial<Record<string, unknown>>) {
   const result = await db.execute(sql`
     WITH current_user_row AS (
       SELECT id FROM users WHERE id = ${user.id}::uuid AND password = ${user.password}
-      AND is_active = true AND email_verified IS NOT NULL FOR UPDATE
+      AND is_active = true AND (email_verified IS NOT NULL OR admin_provisioned) FOR UPDATE
     )
     INSERT INTO sessions (session_token, user_id, expires)
     SELECT ${digest(sessionId)}, id, ${expires.toISOString()}::timestamp FROM current_user_row RETURNING user_id
@@ -157,11 +157,11 @@ export async function authenticate(input: Partial<Record<string, unknown>>) {
 }
 
 export async function readSession(sessionId: string, credentialVersion: string) {
-  const [row] = await db.select({ id: users.id, name: users.name, email: users.email, image: users.image, role: users.role, password: users.password, expires: sessions.expires })
+  const [row] = await db.select({ id: users.id, name: users.name, email: users.email, image: users.image, role: users.role, password: users.password, expires: sessions.expires, mustChangePassword: users.mustChangePassword })
     .from(sessions).innerJoin(users, eq(sessions.userId, users.id))
-    .where(and(eq(sessions.sessionToken, digest(sessionId)), gt(sessions.expires, new Date()), eq(users.isActive, true), sql`${users.emailVerified} IS NOT NULL`)).limit(1)
+    .where(and(eq(sessions.sessionToken, digest(sessionId)), gt(sessions.expires, new Date()), eq(users.isActive, true), sql`(${users.emailVerified} IS NOT NULL OR ${users.adminProvisioned})`)).limit(1)
   if (!row || sessionCredentialVersion(row.id, row.password) !== credentialVersion) return null
-  return { id: row.id, name: row.name, email: row.email, image: row.image, role: row.role, expires: row.expires }
+  return { id: row.id, name: row.name, email: row.email, image: row.image, role: row.role, expires: row.expires, mustChangePassword: row.mustChangePassword }
 }
 
 // Called only after Auth.js validates Google and links its stable subject ID.

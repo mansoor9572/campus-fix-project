@@ -9,7 +9,7 @@ const report = { id: "RPT-9001", title: "Leaking air conditioner", description: 
   building: "Engineering Building F6", buildingId: buildings.find(building => building.code === "F6")!.id,
   room: "F6.201", floor: "2nd Floor", roomNumber: "F6.201", additionalDetails: "Near the elevator",
   category: "HVAC", status: "In Progress", priority: "Medium", reporterName: "Location Test", reporterEmail: "location@example.invalid",
-  reporterProgram: "Engineering", assignedTo: "Location Test", department: "Facilities Services",
+  reporterProgram: "Engineering", assignedTo: "Location Test", assignedStaffId: "11111111-1111-4111-8111-111111111111", department: "Facilities Services",
   createdAt: "2026-11-07T10:00:00Z", updatedAt: "2026-11-07T10:00:00Z", images: [], updates: [] }
 
 async function mockApi(page: Page, options: { failSave?: boolean; existing?: boolean; failDirectory?: boolean } = {}) {

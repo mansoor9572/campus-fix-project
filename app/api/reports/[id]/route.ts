@@ -1,6 +1,8 @@
 import { authorizeApi } from "@/lib/auth/authorization"
 import { getReportById, updateReport } from "@/lib/reports/service"
 import { ReportError } from "@/lib/reports/validation"
+import { readMutation, accountError } from "@/lib/auth/json-request"
+import { AuthInputError } from "@/lib/auth/validation"
 
 export const runtime = "nodejs"
 
@@ -35,7 +37,7 @@ export async function PATCH(
 
   try {
     const { id } = await params
-    const json = await request.json()
+    const json = await readMutation(request)
     const result = await updateReport(authResult.user, id, json)
     return Response.json(result, {
       headers: { "Cache-Control": "no-store" },
@@ -44,7 +46,8 @@ export async function PATCH(
     if (error instanceof ReportError) {
       return Response.json({ message: error.message }, { status: error.status })
     }
-    console.error("Update report error:", error)
+    if (error instanceof AuthInputError) return accountError(error)
+    console.error("Update report failed.")
     return Response.json({ message: "Failed to update report." }, { status: 500 })
   }
 }

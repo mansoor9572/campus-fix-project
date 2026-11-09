@@ -275,7 +275,7 @@ export function LoginPage({ googleEnabled = false, initialError = "" }: { google
       }
       const session = await getSession()
       if (!session?.user) throw new Error("Unable to start your session. Please try again.")
-      window.location.assign(dashboardFor(session.user.role))
+      window.location.assign(session.user.mustChangePassword ? "/change-password" : dashboardFor(session.user.role))
     } catch (error) { setError(error instanceof Error ? error.message : "Unable to sign in. Please try again.") }
     finally { setPending(false) }
   }

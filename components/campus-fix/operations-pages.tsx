@@ -46,6 +46,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useDemoData } from "@/components/campus-fix/demo-provider"
+import { AssignmentPanel } from "./assignment-panel"
 import {
   BrandMark,
   DemoBanner,
@@ -63,16 +64,14 @@ import {
 import {
   CATEGORY_OPTIONS,
   DEPARTMENT_BY_CATEGORY,
-  DEPARTMENT_OPTIONS,
   type CampusReport,
-  type MaintenanceDepartment,
   type Priority,
   type ReportCategory,
   type ReportStatus,
   type Role,
 } from "@/lib/campus-fix/data"
 
-const allStatuses: ("All statuses" | ReportStatus)[] = ["All statuses", "Submitted", "Under Review", "In Progress", "Resolved", "Reopened", "Rejected"]
+const allStatuses: ("All statuses" | ReportStatus)[] = ["All statuses", "Submitted", "Under Review", "Approved", "Assigned", "In Progress", "Resolved", "Closed", "Reopened", "Rejected"]
 const allPriorities: ("All priorities" | Priority)[] = ["All priorities", "Urgent", "High", "Medium", "Low"]
 
 function priorityRank(priority: Priority) {
@@ -97,7 +96,7 @@ function readImagePreview(file: File) {
 }
 
 export function AdminDashboard() {
-  const { reports, profiles, stats, fetchStats } = useDemoData()
+  const { reports, profiles, stats, fetchStats, refData } = useDemoData()
   const [dateRange, setDateRange] = useState<"all" | "7" | "30">("all")
   const [loadedAt] = useState(() => Date.now())
 
@@ -132,16 +131,7 @@ export function AdminDashboard() {
   const maxBuilding = Math.max(1, ...buildings.map((item) => item.count))
   const attentionQueue = queueOrder(openReports).slice(0, 5)
   const recentSubmissions = [...periodReports].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5)
-  const assignedOpenReports = openReports.filter((report) => report.assignedTo === profiles.staff.name)
-
-  const teamWorkload = stats?.workload?.length
-    ? stats.workload
-    : [
-        {
-          name: profiles.staff.name,
-          openCount: assignedOpenReports.length,
-        },
-      ]
+  const teamWorkload = stats?.workload ?? refData.staff.map(worker => ({ staffId: worker.id, name: worker.name, openCount: worker.openTasks }))
   const maxWorkload = Math.max(1, ...teamWorkload.map((m) => m.openCount))
 
   return (
@@ -202,9 +192,9 @@ export function AdminDashboard() {
           </div>
           <div className="priority-mix-summary"><ShieldCheck aria-hidden="true" /><span>Every request has a visible owner and priority.</span></div>
         </PortalCard>
-        <PortalCard title="Team workload" description="Assigned open work across the facilities team." className="portal-col-7" action={<span className="card-link">{stats?.workload?.length ? "Live operations" : "Demo team"}</span>}>
+        <PortalCard title="Team workload" description="Assigned open work across the facilities team." className="portal-col-7" action={<Link className="card-link" href="/admin/team">Manage team</Link>}>
           {teamWorkload.map((member) => (
-            <div className="workload-row" key={member.name}>
+            <div className="workload-row" key={member.staffId}>
               <RoleAvatar name={member.name} role="staff" />
               <div className="workload-person"><strong>{member.name}</strong><span>Facilities technician</span></div>
               <div className="workload-bar"><div style={{ width: `${Math.min(100, (member.openCount / maxWorkload) * 100)}%` }} /></div>
@@ -288,17 +278,11 @@ export function AdminReports() {
     setSelectedIds((current) => selected ? [...new Set([...current, id])] : current.filter((item) => item !== id))
   }
 
-  const assignSelected = () => {
+  const startSelected = async () => {
     if (!selectedIds.length) return
-    selectedIds.forEach((id) => changeReport(id, { assignedTo: profiles.staff.name }, profiles.admin.name))
-    toast.success(`${selectedIds.length} ${selectedIds.length === 1 ? "report" : "reports"} assigned to ${profiles.staff.name}.`)
-    setSelectedIds([])
-  }
-
-  const startSelected = () => {
-    if (!selectedIds.length) return
-    selectedIds.forEach((id) => changeReport(id, { status: "In Progress" }, profiles.admin.name))
-    toast.success(`${selectedIds.length} ${selectedIds.length === 1 ? "report" : "reports"} moved to In Progress.`)
+    const results = await Promise.all(selectedIds.map(id => changeReport(id, { status: "In Progress" }, profiles.admin.name)))
+    const saved = results.filter(Boolean).length
+    if (saved) toast.success(`${saved} reports moved to In Progress.`)
     setSelectedIds([])
   }
 
@@ -338,7 +322,7 @@ export function AdminReports() {
         {selectedIds.length ? (
           <div className="bulk-action-bar">
             <span><strong>{selectedIds.length}</strong> selected</span>
-            <Button variant="outline" size="sm" onClick={assignSelected}><UserRound data-icon="inline-start" aria-hidden="true" />Assign to {profiles.staff.name.split(" ")[0]}</Button>
+            <span>Open a report to assign a worker by department.</span>
             <Button size="sm" onClick={startSelected}><Wrench data-icon="inline-start" aria-hidden="true" />Mark in progress</Button>
             <Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>Clear selection</Button>
           </div>
@@ -374,58 +358,47 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
     return <EmptyState title="Report not found" description="The request may have been removed or its ID may be incorrect." action={<Button variant="outline" onClick={() => router.push("/admin/reports")}>Back to all reports</Button>} />
   }
 
-  const updateStatus = (status: ReportStatus) => {
-    changeReport(report.id, { status }, profiles.admin.name)
+  const updateStatus = async (status: ReportStatus) => {
+    if (!await changeReport(report.id, { status }, profiles.admin.name)) return
     toast.success(`Status updated to ${status}.`)
   }
 
-  const updatePriority = (priority: Priority) => {
-    changeReport(report.id, { priority }, profiles.admin.name)
+  const updatePriority = async (priority: Priority) => {
+    if (!await changeReport(report.id, { priority }, profiles.admin.name)) return
     toast.success(`Priority updated to ${priority}.`)
   }
 
-  const assignTo = (staff: string) => {
-    changeReport(report.id, { assignedTo: staff || null }, profiles.admin.name)
-    toast.success(staff ? `Assigned to ${staff}.` : "Assignment removed.")
-  }
-
-  const submitNote = (event: FormEvent<HTMLFormElement>) => {
+  const submitNote = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (note.trim().length < 4) {
       setNoteError("Add at least 4 characters to your note.")
       return
     }
-    addReportUpdate(report.id, note.trim(), profiles.admin.name)
+    if (!await addReportUpdate(report.id, note.trim(), profiles.admin.name)) return
     setNote("")
     setNoteError("")
     toast.success("Team note added to the timeline.")
   }
 
-  const escalate = () => {
-    changeReport(report.id, { priority: "Urgent", status: report.status === "Submitted" ? "Under Review" : report.status }, profiles.admin.name)
+  const escalate = async () => {
+    if (!await changeReport(report.id, { priority: "Urgent", status: report.status === "Submitted" ? "Under Review" : report.status }, profiles.admin.name)) return
     toast.success("Report escalated for immediate review.")
   }
 
-  const approveReport = () => {
-    changeReport(report.id, { status: "Under Review" }, profiles.admin.name)
-    toast.success("Report approved and moved to the review queue.")
+  const approveReport = async () => {
+    if (!await changeReport(report.id, { status: "Approved" }, profiles.admin.name)) return
+    toast.success("Report approved. Choose a department and worker to assign it.")
   }
 
-  const rejectReport = () => {
-    changeReport(report.id, { status: "Rejected" }, profiles.admin.name)
-    addReportUpdate(report.id, "Campus Operations rejected this report after review.", profiles.admin.name, "Report rejected")
+  const rejectReport = async () => {
+    if (!await changeReport(report.id, { status: "Rejected" }, profiles.admin.name)) return
     setRejectDialogOpen(false)
-    toast.success("Report rejected. The student will see this update in the demo.")
+    toast.success("Report rejected. The student will see this update.")
   }
 
-  const updateCategory = (category: ReportCategory) => {
-    changeReport(report.id, { category }, profiles.admin.name)
+  const updateCategory = async (category: ReportCategory) => {
+    if (!await changeReport(report.id, { category }, profiles.admin.name)) return
     toast.success(`Category updated to ${category}.`)
-  }
-
-  const updateDepartment = (department: MaintenanceDepartment) => {
-    changeReport(report.id, { department }, profiles.admin.name)
-    toast.success(`Routed to ${department}.`)
   }
 
   const suggestedDepartment = DEPARTMENT_BY_CATEGORY[report.category]
@@ -449,21 +422,20 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
     }
   }
 
-  const applyAiSuggestions = () => {
+  const applyAiSuggestions = async () => {
     if (!report.aiAnalysis) return
     const ai = report.aiAnalysis
     const prioMap: Record<string, Priority> = { low: "Low", medium: "Medium", high: "High" }
     const mappedPriority = prioMap[ai.suggestedPriority] || report.priority
-    changeReport(
+    const saved = await changeReport(
       report.id,
       {
         category: (ai.suggestedCategory as ReportCategory) || report.category,
         priority: mappedPriority,
-        department: (ai.recommendedDepartment as MaintenanceDepartment) || report.department,
       },
       profiles.admin.name
     )
-    toast.success("Applied AI category, priority, and department recommendations.")
+    if (saved) toast.success("Applied AI category and priority. Select the responsible department below.")
   }
 
   return (
@@ -620,20 +592,7 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
                   {(["Urgent", "High", "Medium", "Low"] as Priority[]).map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </Field>
-              <Field>
-                <FieldLabel htmlFor="review-department">Department</FieldLabel>
-                <select id="review-department" className="form-select" value={report.department ?? suggestedDepartment} onChange={(event) => updateDepartment(event.target.value as MaintenanceDepartment)}>
-                  {DEPARTMENT_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="review-assignee">Assigned to</FieldLabel>
-                <select id="review-assignee" className="form-select" value={report.assignedTo ?? ""} onChange={(event) => assignTo(event.target.value)}>
-                  <option value="">Unassigned</option>
-                  <option value={profiles.staff.name}>{profiles.staff.name} · Facilities</option>
-                  <option value={profiles.admin.name}>{profiles.admin.name} · Operations</option>
-                </select>
-              </Field>
+              <AssignmentPanel key={`${report.id}-${report.updatedAt}`} report={report} />
               <Button variant="outline" className="full-width-button" onClick={escalate}><ShieldAlert data-icon="inline-start" aria-hidden="true" />Escalate priority</Button>
               <div className="review-decision-actions">
                 <Button className="full-width-button" onClick={approveReport} disabled={report.status === "Rejected" || report.status === "Resolved"}><Check data-icon="inline-start" aria-hidden="true" />Approve report</Button>
@@ -642,7 +601,7 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>Reject this report?</AlertDialogTitle>
-                      <AlertDialogDescription>This adds a rejection update to the student&apos;s demo timeline and marks the request as rejected. This prototype change stays in memory only.</AlertDialogDescription>
+                      <AlertDialogDescription>This marks the report as rejected and adds an update to the student&apos;s timeline.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Keep report</AlertDialogCancel>
@@ -667,22 +626,22 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
 }
 
 export function StaffDashboard() {
-  const { reports, profiles, stats, changeReport } = useDemoData()
+  const { reports, profiles, stats, changeReport, currentUserId } = useDemoData()
   const profile = profiles.staff
-  const assigned = reports.filter((report) => report.assignedTo === profile.name)
-  const active = queueOrder(assigned.filter((report) => report.status !== "Resolved" && report.status !== "Rejected"))
+  const assigned = reports.filter((report) => report.assignedStaffId === currentUserId)
+  const active = queueOrder(assigned.filter((report) => !["Resolved", "Closed", "Rejected"].includes(report.status)))
   const urgent = stats ? stats.urgent : active.filter((report) => report.priority === "Urgent" || report.priority === "High").length
   const inProgressCount = stats ? stats.inProgress : active.filter((report) => report.status === "In Progress").length
   const resolved = stats ? stats.resolved : assigned.filter((report) => report.status === "Resolved").length
-  const activeCount = stats ? (stats.pending + stats.inProgress) : active.length
+  const activeCount = active.length
 
-  const startWork = (report: CampusReport) => {
-    changeReport(report.id, { status: "In Progress" }, profile.name)
+  const startWork = async (report: CampusReport) => {
+    if (!await changeReport(report.id, { status: "In Progress" }, profile.name)) return
     toast.success(`Work started on ${report.id}.`)
   }
 
-  const resolveWork = (report: CampusReport) => {
-    changeReport(report.id, { status: "Resolved" }, profile.name)
+  const resolveWork = async (report: CampusReport) => {
+    if (!await changeReport(report.id, { status: "Resolved" }, profile.name)) return
     toast.success(`${report.id} marked as resolved.`)
   }
 
@@ -709,7 +668,7 @@ export function StaffDashboard() {
                   </div>
                   <div className="task-row-actions">
                     <Link className="table-open-link" href={`/staff/tasks/${report.id}`} aria-label={`View task ${report.id}`}><ArrowRight aria-hidden="true" /></Link>
-                    {report.status === "In Progress" ? <Button variant="outline" size="sm" onClick={() => resolveWork(report)}>Resolve</Button> : <Button size="sm" onClick={() => startWork(report)}>Start work</Button>}
+                    {report.status === "In Progress" ? <Button variant="outline" size="sm" onClick={() => resolveWork(report)}>Resolve</Button> : ["Assigned", "Reopened"].includes(report.status) ? <Button size="sm" onClick={() => startWork(report)}>Start work</Button> : null}
                   </div>
                 </article>
               ))}
@@ -752,18 +711,18 @@ export function StaffTaskDetails({ taskId }: { taskId: string }) {
     return <EmptyState title="Task not found" description="This work order may have been removed or the ID may be incorrect." action={<Button variant="outline" onClick={() => router.push("/staff/dashboard")}>Back to my tasks</Button>} />
   }
 
-  const updateStatus = (status: ReportStatus) => {
-    changeReport(task.id, { status }, profiles.staff.name)
+  const updateStatus = async (status: ReportStatus) => {
+    if (!await changeReport(task.id, { status }, profiles.staff.name)) return
     toast.success(`Task status changed to ${status}.`)
   }
 
-  const submitNote = (event: FormEvent<HTMLFormElement>) => {
+  const submitNote = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (note.trim().length < 4) {
       setNoteError("Add at least 4 characters to your work note.")
       return
     }
-    addReportUpdate(task.id, note.trim(), profiles.staff.name)
+    if (!await addReportUpdate(task.id, note.trim(), profiles.staff.name)) return
     setNote("")
     setNoteError("")
     toast.success("Work note added.")
@@ -805,7 +764,11 @@ export function StaffTaskDetails({ taskId }: { taskId: string }) {
         </div>
         <div className="detail-side-column">
           <PortalCard title="Update status" description="Move this task through the work queue." className="details-actions-card">
-            <div className="details-actions"><StatusBadge status={task.status} />{task.status === "Rejected" ? <p className="task-status-note">This report has been rejected and is closed to maintenance work.</p> : <div className="task-status-actions">{task.status !== "In Progress" && task.status !== "Resolved" ? <Button className="full-width-button" onClick={() => updateStatus("In Progress")}><Wrench data-icon="inline-start" aria-hidden="true" />Start work</Button> : null}{task.status !== "Resolved" ? <Button variant="outline" className="full-width-button" onClick={() => updateStatus("Resolved")}><CheckCircle2 data-icon="inline-start" aria-hidden="true" />Mark completed</Button> : <Button variant="outline" className="full-width-button" onClick={() => updateStatus("Reopened")}>Reopen task</Button>}</div>}</div>
+            <div className="details-actions"><StatusBadge status={task.status} /><div className="task-status-actions">
+              {["Assigned", "Reopened"].includes(task.status) && <Button className="full-width-button" onClick={() => updateStatus("In Progress")}><Wrench data-icon="inline-start" aria-hidden="true" />Start work</Button>}
+              {task.status === "In Progress" && <Button variant="outline" className="full-width-button" onClick={() => updateStatus("Resolved")}><CheckCircle2 data-icon="inline-start" aria-hidden="true" />Mark completed</Button>}
+              {["Resolved", "Closed", "Rejected"].includes(task.status) && <p>This task is complete. Contact Campus Operations if further work is needed.</p>}
+            </div></div>
           </PortalCard>
           <PortalCard title="Completion evidence" description="Attach an optional photo from the repair." className="completion-evidence-card">
             <div className="evidence-upload">

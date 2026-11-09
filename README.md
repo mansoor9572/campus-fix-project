@@ -1,5 +1,7 @@
 # CampusFix — AI-Powered Campus Facility Maintenance System
 
+Admins can now create department-based worker accounts and additional administrators under **Team management**, require a password change at first login, and assign reports to workers by account ID. See [Team management](docs/TEAM-MANAGEMENT.md) for the workflow, migration, and testing instructions.
+
 [![Next.js](https://img.shields.io/badge/Next.js-16.0-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon_Serverless-4169E1?logo=postgresql)](https://neon.tech/)

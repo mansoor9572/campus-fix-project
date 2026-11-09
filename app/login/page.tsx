@@ -8,7 +8,7 @@ export default async function Page({ searchParams }: {
   searchParams: Promise<{ error?: string | string[] }>
 }) {
   const session = await auth()
-  if (session?.user) redirect(dashboardFor(session.user.role))
+  if (session?.user) redirect(session.user.mustChangePassword ? "/change-password" : dashboardFor(session.user.role))
   const { error } = await searchParams
   const initialError = error === "GoogleEmailNotSupported"
     ? "Use a verified Gmail or Google Workspace account, or sign in with your CampusFix password."

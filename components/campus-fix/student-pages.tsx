@@ -64,8 +64,11 @@ const statusOptions: ("All statuses" | ReportStatus)[] = [
   "All statuses",
   "Submitted",
   "Under Review",
+  "Approved",
+  "Assigned",
   "In Progress",
   "Resolved",
+  "Closed",
   "Reopened",
   "Rejected",
 ]
@@ -680,13 +683,13 @@ export function StudentReportDetails({ reportId }: { reportId: string }) {
     return <EmptyState title="Report not found" description="This report may have been removed or the ID may be incorrect." action={<Button variant="outline" onClick={() => router.push("/student/reports")}>Back to my reports</Button>} />
   }
 
-  const submitComment = (event: FormEvent<HTMLFormElement>) => {
+  const submitComment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (comment.trim().length < 4) {
       setCommentError("Add at least 4 characters to your follow-up.")
       return
     }
-    addReportUpdate(report.id, comment.trim(), profiles.student.name, "Student follow-up added")
+    if (!await addReportUpdate(report.id, comment.trim(), profiles.student.name, "Student follow-up added")) return
     setComment("")
     setCommentError("")
     toast.success("Your follow-up was added to the report timeline.")
