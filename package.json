@@ -15,7 +15,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:umy": "tsx scripts/seed-umy-buildings.ts",
     "lint": "eslint .",
-    "test": "tsx --test tests/auth.unit.test.ts tests/reports.unit.test.ts tests/ai.unit.test.ts tests/uploads.unit.test.ts tests/buildings.unit.test.ts tests/team.unit.test.ts",
+    "test": "tsx --test tests/auth.unit.test.ts tests/reports.unit.test.ts tests/ai.unit.test.ts tests/uploads.unit.test.ts tests/buildings.unit.test.ts tests/team.unit.test.ts tests/origin.unit.test.ts",
     "test:team": "playwright test -c playwright.team.config.ts",
     "test:reports": "tsx scripts/test-reports.ts",
     "test:auth": "playwright test",

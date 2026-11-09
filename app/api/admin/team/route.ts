@@ -8,7 +8,7 @@ export async function GET() {
   const auth = await authorizeApi(["admin"])
   if (auth.error) return auth.error
   try { return Response.json(await listTeam(), { headers: { "Cache-Control": "no-store" } }) }
-  catch (error) { return accountError(error) }
+  catch (error) { return accountError(error, "load") }
 }
 export async function POST(request: Request) {
   const auth = await authorizeApi(["admin"])

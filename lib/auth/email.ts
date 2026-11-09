@@ -1,12 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
+import { resolveAppOrigin } from "./origin"
 
 export function appOrigin() {
-  const url = new URL(process.env.APP_URL || "http://localhost:3000")
-  if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) throw new Error("APP_URL must be an origin.")
-  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") throw new Error("APP_URL must use HTTPS in production.")
-  return url.origin
+  return resolveAppOrigin(process.env)
 }
 
 export function assertEmailConfigured() {

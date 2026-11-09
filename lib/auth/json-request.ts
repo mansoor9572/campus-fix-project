@@ -19,9 +19,11 @@ export async function readMutation(request: Request) {
   try { return JSON.parse(text) as unknown } catch { throw new AuthInputError("Invalid JSON.") }
 }
 
-export function accountError(error: unknown) {
+export function accountError(error: unknown, operation: "load" | "save" = "save") {
   if (error instanceof AuthInputError) return Response.json({ message: error.message }, { status: error.status, headers: { "Cache-Control": "no-store" } })
   // Never log passwords, database query parameters, or request bodies.
-  console.error("Team account request failed.")
-  return Response.json({ message: "Unable to save this change. Please try again." }, { status: 500 })
+  const cause = error && typeof error === "object" && "cause" in error ? error.cause : error
+  const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9]{5}$/.test(cause.code) ? cause.code : "UNKNOWN"
+  console.error("Team account request failed.", { operation, code })
+  return Response.json({ message: operation === "load" ? "Unable to load the team. Please try again." : "Unable to save this change. Please try again." }, { status: 500, headers: { "Cache-Control": "no-store" } })
 }
