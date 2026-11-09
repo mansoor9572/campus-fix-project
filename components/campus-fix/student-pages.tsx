@@ -38,7 +38,6 @@ import { ReportDescriptionField } from "./report-description-field"
 import { REPORT_TEXT_MAX, REPORT_TEXT_MIN, titleFromDescription } from "@/lib/reports/text"
 import { LOCATION_LIMITS, locationSummary } from "@/lib/reports/location"
 import {
-  DemoBanner,
   EmptyState,
   PageHeader,
   PortalCard,
@@ -118,7 +117,6 @@ export function StudentDashboard() {
         description="Here’s the latest on the campus issues you’ve reported."
         actions={<Link className="button-link button-link-primary" href="/student/reports/new"><Plus aria-hidden="true" />New report</Link>}
       />
-      <DemoBanner />
       <div className="stat-grid">
         <StatCard label="Total reports" value={totalCount} note="all time" icon={FilePlus2} />
         <StatCard label="Pending review" value={pendingCount} note="awaiting team review" icon={Clock3} />
@@ -195,7 +193,6 @@ export function StudentReports() {
         description="Track the issues you’ve reported and follow every update."
         actions={<Link className="button-link button-link-primary" href="/student/reports/new"><Plus aria-hidden="true" />New report</Link>}
       />
-      <DemoBanner />
       <Card className="portal-card">
         <CardHeader className="table-toolbar">
           <div className="table-filters">
@@ -698,7 +695,6 @@ export function StudentReportDetails({ reportId }: { reportId: string }) {
   return (
     <>
       <PageHeader eyebrow="Student workspace" title="Report details" description={`Follow the progress on ${report.id}.`} actions={<Link className="button-link button-link-secondary" href="/student/reports">Back to my reports</Link>} />
-      <DemoBanner />
       <div className="report-detail-grid">
         <div className="detail-main-column">
           <Card className="portal-card">
@@ -804,7 +800,6 @@ export function NotificationsPage({ role }: { role: Role }) {
         description={unread ? `You have ${unread} unread ${unread === 1 ? "update" : "updates"}.` : "You’re all caught up. Here are your recent updates."}
         actions={unread ? <Button variant="outline" size="sm" onClick={markAllNotificationsRead}><CheckCheck data-icon="inline-start" aria-hidden="true" />Mark all as read</Button> : undefined}
       />
-      <DemoBanner />
       <div className="notification-list">
         {sorted.length ? sorted.map((notification) => <NotificationItem key={notification.id} notification={notification} role={role} />) : <EmptyState title="No notifications yet" description="Status changes and team updates will appear here." icon={Bell} />}
       </div>

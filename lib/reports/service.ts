@@ -17,6 +17,7 @@ import {
   type UserRole,
 } from "@/lib/db"
 import { locationSummary } from "./location"
+import type { ReportUpdate } from "@/lib/campus-fix/data"
 import { triageFacilityIssue } from "@/lib/ai/gemini"
 import { saveAiAnalysis, getAiAnalysis } from "@/lib/ai/service"
 import { canAccessReport, priorityLabels, statusLabels, transitions } from "./policy"
@@ -408,6 +409,38 @@ export async function listReports(
     }
   }
 
+  // List consumers render activity and timelines too. Keep the same history
+  // visibility as the detail endpoint, fetching once for the current page.
+  const updateMap: Record<string, ReportUpdate[]> = {}
+  if (reportDbIds.length > 0) {
+    const historyConditions = [inArray(reportStatusHistory.reportId, reportDbIds)]
+    if (actor.role === "student") historyConditions.push(eq(reportStatusHistory.isPublic, true))
+    const historyRows = await db
+      .select({
+        id: reportStatusHistory.id,
+        reportId: reportStatusHistory.reportId,
+        previousStatus: reportStatusHistory.previousStatus,
+        newStatus: reportStatusHistory.newStatus,
+        actorName: users.name,
+        note: reportStatusHistory.note,
+        createdAt: reportStatusHistory.createdAt,
+      })
+      .from(reportStatusHistory)
+      .leftJoin(users, eq(reportStatusHistory.actorId, users.id))
+      .where(and(...historyConditions))
+      .orderBy(desc(reportStatusHistory.createdAt))
+
+    for (const h of historyRows) {
+      (updateMap[h.reportId] ??= []).push({
+        id: h.id,
+        createdAt: h.createdAt.toISOString(),
+        actor: h.actorName ?? "Campus Operations",
+        title: h.previousStatus ? `Status changed to ${statusLabels[h.newStatus]}` : "Report submitted",
+        message: h.note || `Status updated to ${statusLabels[h.newStatus]}.`,
+      })
+    }
+  }
+
   const items = rows.map((r) => ({
     id: r.referenceNumber, // UI uses referenceNumber as id (e.g., RPT-1048)
     dbId: r.id,
@@ -432,6 +465,7 @@ export async function listReports(
     resolvedAt: r.resolvedAt?.toISOString() ?? null,
     closedAt: r.closedAt?.toISOString() ?? null,
     images: imageMap[r.id] ?? [],
+    updates: updateMap[r.id] ?? [],
     aiAnalysis: aiMap[r.id] ?? null,
   }))
 

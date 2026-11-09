@@ -162,7 +162,6 @@ export function AdminDashboard() {
           </div>
         )}
       />
-      <DemoBanner />
       <div className="stat-grid admin-stat-grid">
         <StatCard label="Total reports" value={totalReportsCount} note="in selected period" icon={ClipboardCheck} />
         <StatCard label="Pending review" value={pendingCount} note="awaiting a decision" icon={Clock3} />
@@ -321,7 +320,6 @@ export function AdminReports() {
         description="Review, prioritize, and route requests from across campus."
         actions={<Button variant="outline" size="sm" onClick={() => exportReports(filteredReports)}><ArrowDownToLine data-icon="inline-start" aria-hidden="true" />Export CSV</Button>}
       />
-      <DemoBanner>Review and assignment changes are shared across the admin and staff demo workspaces for this session.</DemoBanner>
       <Card className="portal-card">
         <CardHeader className="table-toolbar">
           <div className="table-filters">
@@ -471,7 +469,6 @@ export function AdminReportDetails({ reportId }: { reportId: string }) {
   return (
     <>
       <PageHeader eyebrow="Campus operations" title="Review report" description={`Manage assignment, priority, and progress for ${report.id}.`} actions={<Link className="button-link button-link-secondary" href="/admin/reports">Back to all reports</Link>} />
-      <DemoBanner>Changes made here appear in the student and staff demo workspaces.</DemoBanner>
       <div className="report-detail-grid">
         <div className="detail-main-column">
           <Card className="portal-card">
@@ -692,7 +689,6 @@ export function StaffDashboard() {
   return (
     <>
       <PageHeader eyebrow="Facilities team" title={`Good morning, ${profile.name.split(" ")[0]}`} description="Your assigned work and priority requests for campus." actions={<span className="role-chip"><HardHat aria-hidden="true" />On shift · Facilities</span>} />
-      <DemoBanner>Task changes sync with the admin queue and student report timeline in this session.</DemoBanner>
       <div className="stat-grid">
         <StatCard label="Active tasks" value={activeCount} note="assigned to you" icon={Wrench} />
         <StatCard label="High priority" value={urgent} note="needs timely action" icon={ShieldAlert} />
@@ -798,7 +794,6 @@ export function StaffTaskDetails({ taskId }: { taskId: string }) {
   return (
     <>
       <PageHeader eyebrow="Facilities team" title="Task details" description={`Work order ${task.id} · ${task.building} · ${locationSummary(task)}.`} actions={<Link className="button-link button-link-secondary" href="/staff/dashboard">Back to my tasks</Link>} />
-      <DemoBanner>Work notes and status updates appear in the shared report timeline.</DemoBanner>
       <div className="report-detail-grid">
         <div className="detail-main-column">
           <Card className="portal-card">

@@ -4,8 +4,6 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { useSession } from "next-auth/react"
 import { uiRole } from "@/lib/auth/policy"
 import {
-  DEMO_REPORTS,
-  INITIAL_NOTIFICATIONS,
   INITIAL_PROFILES,
   type CampusNotification,
   type CampusReport,
@@ -88,10 +86,16 @@ type DemoDataContextValue = {
 
 const DemoDataContext = createContext<DemoDataContextValue | null>(null)
 
+// Older API responses omitted history. Normalize at the boundary so every
+// report consumer (including timelines and optimistic updates) gets an array.
+function normalizeReport(report: CampusReport): CampusReport {
+  return { ...report, updates: Array.isArray(report.updates) ? report.updates : [] }
+}
+
 export function DemoDataProvider({ children }: { children: ReactNode }) {
   const { data: session, status } = useSession()
-  const [reports, setReports] = useState<CampusReport[]>(() => [...DEMO_REPORTS])
-  const [notifications, setNotifications] = useState<CampusNotification[]>(() => [...INITIAL_NOTIFICATIONS])
+  const [reports, setReports] = useState<CampusReport[]>([])
+  const [notifications, setNotifications] = useState<CampusNotification[]>([])
   const [demoProfiles, setProfiles] = useState<Record<Role, DemoProfile>>(() => ({ ...INITIAL_PROFILES }))
   const [refData, setRefData] = useState<ReferenceData>({
     buildings: [],
@@ -169,20 +173,26 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
 
     // Fetch reports
     fetch("/api/reports?pageSize=100")
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load reports.")
+        return res.json()
+      })
       .then((data) => {
-        if (isMounted && data?.reports) {
-          // If the database has real reports, display them
-          setReports(data.reports)
+        if (!Array.isArray(data?.reports)) throw new Error("Invalid report response.")
+        if (isMounted) {
+          setReports(data.reports.map(normalizeReport))
         }
       })
-      .catch((err) => console.error("Failed to load reports:", err))
+      .catch((err) => {
+        console.error("Failed to load reports:", err)
+        if (isMounted) toast.error("Failed to load reports. Please reload to try again.")
+      })
 
     // Fetch notifications
     fetch("/api/notifications")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (isMounted && Array.isArray(data) && data.length > 0) {
+        if (isMounted && Array.isArray(data)) {
           setNotifications(data)
         }
       })
@@ -224,7 +234,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
     })
     const result = await response.json()
     if (!response.ok) throw new Error(result.message || "Failed to save report. Please try again.")
-    setReports(current => [result, ...current])
+    setReports(current => [normalizeReport(result), ...current])
     void fetch("/api/notifications").then(response => response.ok ? response.json() : null)
       .then(data => { if (Array.isArray(data)) setNotifications(data) }).catch(() => {})
     void fetchStats()
@@ -335,7 +345,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }) {
           }
           const serverReport = await res.json()
           setReports((current) =>
-            current.map((r) => (r.id === id ? { ...r, ...serverReport } : r))
+            current.map((r) => (r.id === id ? normalizeReport({ ...r, ...serverReport }) : r))
           )
           void fetchStats()
         })
