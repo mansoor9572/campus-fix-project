@@ -279,3 +279,4 @@ For testing and grading, pre-configured verified accounts are available:
 * **Institution**: Universitas Muhammadiyah Yogyakarta (UMY)
 * **Semester**: Semester 5 University Project (2026)
 * **Lead Developer**: Mohammed Mansoor ([@mansoor9572](https://github.com/mansoor9572))
+
