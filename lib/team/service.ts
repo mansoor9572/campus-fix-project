@@ -49,7 +49,7 @@ export async function updateMember(actorId: string, id: string, raw: unknown) {
   if (actorId === id) throw new AuthInputError("Use another administrator to manage your account.", 400)
   const password = input.kind === "password" ? await hash(input.password, 12) : null
   const change = input.kind === "password"
-    ? sql`password = ${password}, must_change_password = true`
+    ? sql`password = ${password}, must_change_password = true, admin_provisioned = true`
     : input.kind === "department" ? sql`department_id = ${input.departmentId}::uuid` : sql`is_active = ${input.isActive}`
   const guard = input.kind === "department"
     ? sql`u.role = 'maintenance_staff' AND EXISTS (SELECT 1 FROM departments WHERE id = ${input.departmentId}::uuid AND is_active)
