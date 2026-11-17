@@ -32,7 +32,7 @@ Admins can now create department-based worker accounts and additional administra
   - [Environment Variables](#environment-variables)
 - [Testing & Quality Assurance](#-testing--quality-assurance)
 - [Deployment](#-deployment)
-- [Demo Credentials](#-demo-credentials)
+- [Sign-in and test accounts](#sign-in-and-test-accounts)
 - [License](#-license)
 
 ---
@@ -253,15 +253,9 @@ For detailed production instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
-## 🔑 Demo Credentials
+## Sign-in and test accounts
 
-For testing and grading, pre-configured verified accounts are available:
-
-| Role | Email | Password | Access Level |
-|---|---|---|---|
-| **Administrator** | `t.altameme95@gmail.com` | `CampusFix2026!` | Full Operations Dashboard, Analytics, Staff Assignment, Triage Approval |
-| **Student** | `student@example.com` | `Student2026!` | Issue Reporting, AI Rewrite, Camera Capture, Personal Timeline |
-| **Maintenance Staff** | `staff@example.com` | `Staff2026!` | Task Board, Work Orders, In-Progress Updates, Resolution |
+The authentication system does not seed demo user accounts. Create an account from `/register`, verify it using the email link, then sign in with the address and password you registered. New registrations are students; staff and administrator roles must be provisioned by an authorized operator. See [AUTHENTICATION.md](AUTHENTICATION.md) for local email testing and administrator setup.
 
 ---
 

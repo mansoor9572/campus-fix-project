@@ -26,11 +26,15 @@ Configure these environment variables in your deployment settings (e.g. **Vercel
 | `APP_URL` | Canonical public HTTPS URL of your deployed application | `https://campusfix.vercel.app` |
 | `AUTH_URL` | Auth.js base URL (same as `APP_URL`) | `https://campusfix.vercel.app` |
 | `AUTH_TRUST_HOST` | Set to `true` on Vercel or reverse-proxy deployments | `true` |
+| `AUTH_GOOGLE_ID` | Google OAuth web client ID | From Google Cloud Console |
+| `AUTH_GOOGLE_SECRET` | Google OAuth web client secret | From Google Cloud Console |
 | `AUTH_EMAIL_PROVIDER` | Email provider engine (`resend` in production, `file` in dev) | `resend` |
 | `RESEND_API_KEY` | Resend API key from https://resend.com/ | `re_123456789...` |
 | `AUTH_EMAIL_FROM` | Verified sender address or Resend test domain | `CampusFix <onboarding@resend.dev>` or `support@yourdomain.edu` |
 | `GEMINI_API_KEY` | Google AI Studio key for live AI issue triage | `AIzaSy...` (from https://aistudio.google.com/) |
 | `GEMINI_MODEL` | Gemini AI model identifier | `gemini-3.8-flash` |
+
+`APP_URL` and `AUTH_URL` must use the exact public hostname people open, with no trailing slash. If the app is served at a custom Vercel domain, use that custom domain rather than the generated `*.vercel.app` project hostname. In Google Cloud Console, add `https://YOUR_PUBLIC_HOST/api/auth/callback/google` as an authorized redirect URI for the same OAuth web client.
 
 ---
 
@@ -69,13 +73,15 @@ npx pnpm@12.3.4 run db:seed
 ```
 
 ### Create Your Production Administrator Account
-Run the automated account provisioning script with your own university email and a strong password:
+Do not create a user directly with `scripts/create-test-user.ts`; it is a legacy development helper. Register an account on the deployed site and verify the email address first. Then, from a trusted operator shell connected to the production database, promote that verified student using the guarded bootstrap command:
 
-```bash
-npx tsx scripts/create-test-user.ts your.name@university.edu YourSecurePassword2026! --admin
+```powershell
+$env:BOOTSTRAP_ADMIN_EMAIL = 'your.verified-address@university.edu'
+pnpm auth:bootstrap-admin
+Remove-Item Env:BOOTSTRAP_ADMIN_EMAIL
 ```
 
-This creates an active, email-verified administrator account ready for immediate sign-in at `https://your-domain.vercel.app/login`.
+The command refuses to run unless the account exists, is active, verified, and has a password. It only bootstraps the first administrator; later role changes require the authorized operator process described in [AUTHENTICATION.md](AUTHENTICATION.md). Sign in again after promotion.
 
 ---
 
