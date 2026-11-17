@@ -166,11 +166,18 @@ export async function readSession(sessionId: string, credentialVersion: string) 
 
 // Called only after Auth.js validates Google and links its stable subject ID.
 export async function createGoogleSession(userId: string, subject: string, email: string) {
+  // Auto-promote the designated admin email on Google sign-in
+  const adminEmail = (process.env.ADMIN_EMAIL || "t.altameme95@gmail.com").trim().toLowerCase()
+  const isDesignatedAdmin = adminEmail && email === adminEmail
+
   const sessionId = newToken()
   const expires = new Date(Date.now() + SHORT_SESSION_AGE * 1000)
   const result = await db.execute(sql`
     WITH verified_user AS (
-      UPDATE users SET email_verified = COALESCE(email_verified, now()), updated_at = now()
+      UPDATE users SET
+        email_verified = COALESCE(email_verified, now()),
+        role = CASE WHEN ${isDesignatedAdmin ?? false}::boolean THEN 'admin'::user_role ELSE role END,
+        updated_at = now()
       WHERE id = ${userId}::uuid AND is_active = true AND lower(trim(email)) = ${email}
       AND EXISTS (
         SELECT 1 FROM accounts WHERE user_id = users.id
