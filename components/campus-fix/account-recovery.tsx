@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { AuthBrandPanel } from "./public-pages"
+import { LanguageSwitcher } from "@/components/campus-fix/language-provider"
 import { accountRequest } from "@/lib/auth/client"
 
 export function AccountRecoveryPage({ action }: { action: "forgot-password" | "reset-password" | "verify-email" | "resend-verification" }) {
@@ -43,7 +44,7 @@ export function AccountRecoveryPage({ action }: { action: "forgot-password" | "r
 
   return <main className="auth-shell">
     <AuthBrandPanel />
-    <section className="auth-form-side"><div className="auth-form-wrap">
+    <section className="auth-form-side"><LanguageSwitcher floating /><div className="auth-form-wrap">
       <h2>{title}</h2>
       <p className="auth-subtitle">{needsToken ? "Use the link from your email to continue." : "Enter the email address you used to register."}</p>
       {error && <div className="auth-error" role="alert">{error}</div>}

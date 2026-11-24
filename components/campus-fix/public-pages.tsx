@@ -24,6 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { BrandMark } from "@/components/campus-fix/shared"
+import { LanguageSwitcher } from "@/components/campus-fix/language-provider"
 import { signIn, getSession } from "next-auth/react"
 import { dashboardFor } from "@/lib/auth/policy"
 import { accountRequest } from "@/lib/auth/client"
@@ -125,6 +126,7 @@ export function LandingPage() {
             <a href="#for-campus">For campus teams</a>
           </div>
           <div className="public-nav-actions">
+            <LanguageSwitcher />
             <Link className="text-link public-nav-signin public-desktop-signin" href="/login">Sign in</Link>
             <Link className="button-link public-cta" href="/login">Report a Problem <ArrowRight aria-hidden="true" /></Link>
             <Link className="text-link public-nav-signin public-mobile-signin" href="/login">Sign in</Link>
@@ -284,6 +286,7 @@ export function LoginPage({ googleEnabled = false, initialError = "" }: { google
     <main className="auth-shell">
       <AuthBrandPanel />
       <section className="auth-form-side">
+        <LanguageSwitcher floating />
         <div className="auth-form-wrap">
           <Link className="auth-mobile-brand" href="/" aria-label="CampusFix home"><BrandMark small /></Link>
           <h2>Sign in to CampusFix</h2>
@@ -393,6 +396,7 @@ export function RegisterPage() {
     <main className="auth-shell">
       <AuthBrandPanel register />
       <section className="auth-form-side">
+        <LanguageSwitcher floating />
         <div className="auth-form-wrap">
           <Link className="auth-mobile-brand" href="/" aria-label="CampusFix home"><BrandMark small /></Link>
           <h2>Create your account</h2>

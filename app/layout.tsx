@@ -6,6 +6,9 @@ import "./globals.css"
 import { auth } from "@/auth"
 import { AuthProvider } from "@/components/campus-fix/auth-provider"
 import { AmbientBackground } from "@/components/campus-fix/ambient-background"
+import { LanguageProvider } from "@/components/campus-fix/language-provider"
+import { LANGUAGE_COOKIE, parseLanguage } from "@/lib/i18n/config"
+import { cookies } from "next/headers"
 
 export const metadata: Metadata = {
   title: {
@@ -32,8 +35,9 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth()
+  const language = parseLanguage((await cookies()).get(LANGUAGE_COOKIE)?.value)
   return (
-    <html lang="en">
+    <html lang={language}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
@@ -44,10 +48,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </head>
       <body>
         <AmbientBackground />
-        <AuthProvider session={session}><DemoDataProvider>
+        <LanguageProvider initialLanguage={language}><AuthProvider session={session}><DemoDataProvider>
           {children}
           <Toaster position="top-right" theme="light" richColors closeButton />
-        </DemoDataProvider></AuthProvider>
+        </DemoDataProvider></AuthProvider></LanguageProvider>
         <Analytics />
       </body>
     </html>
