@@ -61,6 +61,7 @@ import {
   StatusBadge,
   formatDate,
 } from "@/components/campus-fix/shared"
+import { LanguageSwitcher } from "@/components/campus-fix/language-provider"
 import {
   CATEGORY_OPTIONS,
   DEPARTMENT_BY_CATEGORY,
@@ -874,6 +875,7 @@ export function SettingsPage() {
 function SystemPage({ code, title, description }: { code: string; title: string; description: string }) {
   return (
     <main className="system-page">
+      <LanguageSwitcher floating />
       <div className="system-card">
         <Link href="/" aria-label="CampusFix home"><BrandMark /></Link>
         <span className="system-code">{code}</span>

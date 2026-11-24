@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react"
 import Link from "next/link"
 import { signOut, useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
+import { LanguageSwitcher } from "@/components/campus-fix/language-provider"
 
 export function InitialPasswordPage() {
   const { status } = useSession()
@@ -34,18 +35,18 @@ export function InitialPasswordPage() {
       setSaved(true)
     } catch (error) { setError(error instanceof Error ? error.message : "Please try again."); setBusy(false) }
   }
-  if (saved) return <main className="team-password-page"><section className="portal-card team-password-card">
+  if (saved) return <main className="team-password-page"><LanguageSwitcher floating /><section className="portal-card team-password-card">
     <h1>Password changed</h1>
     <p role="status">Your new password is saved. Sign in with it to open your workspace.</p>
     <Link className="button-link button-link-primary" href="/login" prefetch={false}>Sign in with new password</Link>
   </section></main>
-  if (sessionExpired || status === "unauthenticated") return <main className="team-password-page"><section className="portal-card team-password-card">
+  if (sessionExpired || status === "unauthenticated") return <main className="team-password-page"><LanguageSwitcher floating /><section className="portal-card team-password-card">
     <h1>Sign in again to continue</h1>
     <p role="alert">Your sign-in session ended. This can happen if an administrator resets your password or signs you out.</p>
     <p>Use the latest temporary password from your administrator. If you already changed it successfully, use your new password.</p>
     <Link className="button-link button-link-primary" href="/login" prefetch={false}>Sign in again</Link>
   </section></main>
-  return <main className="team-password-page"><section className="portal-card team-password-card">
+  return <main className="team-password-page"><LanguageSwitcher floating /><section className="portal-card team-password-card">
     <h1>Choose your own password</h1>
     <p>Your administrator created your account with a temporary password. Replace it before opening your workspace.</p>
     <form onSubmit={submit} className="team-form">

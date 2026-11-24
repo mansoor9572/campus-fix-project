@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { useDemoData } from "@/components/campus-fix/demo-provider"
 import { BrandMark, RoleAvatar } from "@/components/campus-fix/shared"
+import { LanguageSwitcher } from "@/components/campus-fix/language-provider"
 import type { Role } from "@/lib/campus-fix/data"
 
 const roleLabels: Record<Role, string> = {
@@ -219,6 +220,7 @@ export function PortalShell({
             />
           </form>
           <div className="topbar-actions">
+            <LanguageSwitcher />
             <Link className="topbar-icon-button" href={notificationRoutes[role]} aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}>
               <Bell aria-hidden="true" />
               {unreadCount ? <span className="notification-dot" aria-hidden="true" /> : null}
